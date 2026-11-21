@@ -1,5 +1,7 @@
 # esp_sdk_rustc
 
+[![CI](https://github.com/sprchuoi/esp_sdk_rustc/actions/workflows/ci.yml/badge.svg)](https://github.com/sprchuoi/esp_sdk_rustc/actions/workflows/ci.yml)
+
 A Rust **SDK** with its own tiny RTOS for ESP32 smart-home nodes — configuration-driven and portable
 the way a Linux kernel is: Kconfig for features, device tree for hardware, drivers bound by
 `compatible` string.
@@ -8,9 +10,11 @@ Customers depend on it to build their own products. Everything under `apps/` her
 first real consumer is the migration of [`smart_home_idf`](https://github.com/sprchuoi/smart_home_idf)
 from ESP-IDF/C++ onto this SDK.
 
-**Status: planning.** No firmware yet — design and roadmap:
+**Status: Phase 1 seed.** The scheduler core lives in `kernel/` with host tests
+(`cargo test`); the rest is documentation and the phase plan:
 [PLAN](docs/PLAN.md) · [ARCHITECTURE](docs/ARCHITECTURE.md) · [CONFIGURATION](docs/CONFIGURATION.md) ·
-[DRIVERS](docs/DRIVERS.md) · [SDK contract](docs/SDK.md) · [MIGRATION](docs/MIGRATION.md).
+[DRIVERS](docs/DRIVERS.md) · [CI](docs/CI.md) · [SDK contract](docs/SDK.md) ·
+[MIGRATION](docs/MIGRATION.md).
 
 ## Using the SDK
 
@@ -121,6 +125,18 @@ console commands, OTA slot layout. The C++ repo's docs and code disagree on the 
 contract is captured from the running firmware into golden fixtures and diffed against a shadow node
 before any cutover. Plan: [docs/MIGRATION.md](docs/MIGRATION.md).
 
+## Development
+
+```bash
+cargo test --workspace            # host tests (scheduler now, codegen/contracts later)
+cargo clippy --workspace --all-targets -- -D warnings
+cargo fmt --all -- --check
+RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
+```
+
+CI runs exactly these on every push, plus MSRV 1.95; S3/C6 device builds, the config matrix and
+hardware-in-the-loop activate automatically as those pieces land ([docs/CI.md](docs/CI.md)).
+
 ## Non-goals
 
 Matter stack, cloud backend, voice assistant, a new LLVM backend, a new WiFi PHY.
@@ -131,6 +147,7 @@ Matter stack, cloud backend, voice assistant, a new LLVM backend, a new WiFi PHY
 - [Architecture](docs/ARCHITECTURE.md) — scheduler, interrupts, DMA, crypto, sleep, memory map
 - [Configuration](docs/CONFIGURATION.md) — Kconfig, board DTS, codegen, porting, CI matrix
 - [Drivers](docs/DRIVERS.md) — driver model, buses, EEPROM, MTD/flash, NET
+- [CI](docs/CI.md) — pipeline, test layers, HIL, release gates
 - [SDK contract](docs/SDK.md) — crates, features, versioning, release policy
 - [Migration](docs/MIGRATION.md) — `smart_home_idf` parity and cutover
 

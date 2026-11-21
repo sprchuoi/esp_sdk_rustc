@@ -1,6 +1,6 @@
 # esp_sdk_rustc — Build Plan
 
-**Status:** draft v0.3 · 2026-09-21
+**Status:** draft v0.5 · 2026-09-21
 **Goal:** a Rust **SDK** for ESP32 smart-home nodes that ships an OS — a tiny RTOS with the scheduler,
 drivers, network and device framework — portable across chips and boards the way a Linux kernel is:
 configuration-driven, hardware described in data, drivers bound by compatible string. Customers
@@ -57,8 +57,8 @@ and on a board nobody has designed yet.
 
 ## 2. Decision log
 
-These are the decisions this plan is built on. They are **proposals** — confirm or flip them before
-Phase 1 starts; changing one later is expensive.
+These are the decisions this plan is built on. The ones in §2.1 are **locked by the owner**; the rest
+are provisional defaults that can still be flipped cheaply.
 
 | ID | Decision | Proposed choice | Alternative | Why |
 |---|---|---|---|---|
@@ -81,6 +81,24 @@ Phase 1 starts; changing one later is expensive.
 | ADR-017 | SDK distribution boundary | Published crates expose a **small Cargo feature contract**; Kconfig is the authoring/CI front-end that produces feature sets; `esp-sdk-build` compiles the customer's `board.dts` | Ship a global `.config` consumed by libraries | A crates.io consumer must build from `Cargo.lock` + features alone; libraries cannot read a project-global config. Features stay curated so the matrix does not explode |
 | ADR-018 | Migration strategy | **Freeze the external contract, shadow-run, then cut over per node**; keep the IDF image as rollback | Big-bang rewrite | Documentation and code disagree in the C++ repo; the broker contract is positional, so it must be captured from code and diffed, not assumed. See [MIGRATION.md](MIGRATION.md) |
 | ADR-019 | Versioning | Lockstep `0.x` across crates, one tag, `cargo semver-checks` on the facade, MSRV 1.95 | Independent crate versions | One version is the only thing a customer can reason about before 1.0; independent versions triple the release matrix for no benefit |
+
+### 2.1 Locked by the owner
+
+| Decision | Locked value |
+|---|---|
+| Language / runtime | Rust, `no_std`, own kernel — no FreeRTOS |
+| First target | ESP32-S3 (DevKitC-1 N16R8) |
+| Kernel | TinyRTOS with a priority **scheduler**, IRQ model, logging, crypto, DMA, sleep |
+| Portability | Linux-style: Kconfig + board description, drivers bound by `compatible` |
+| Driver scope | EEPROM, FLASH/MTD, NET (WiFi), plus GPIO/PWM/ADC/sensors |
+| Repository role | **SDK library**; `apps/` are examples; customers depend on published crates |
+| Migration | `smart_home_idf` moves onto the SDK and keeps its broker contract |
+| CI | build + unit tests on every push; device builds and HIL activate as the tree grows |
+
+Still **provisional**: `esp-hal` as the rented bottom, cooperative vs preemptive scheduling (a
+preemptive lane would change the kernel), buy-vs-build the bootloader, DTS as the board format,
+crates.io publication, and the cutover questions in §9. Each can be changed without invalidating the
+phase plan.
 
 ---
 
@@ -122,6 +140,7 @@ Two documents carry the detail:
 
 | Capability | Where | Phase | What "done" means |
 |---|---|---|---|
+| **CI + host unit tests** | `.github/workflows/ci.yml` | 0 | fmt, clippy, tests, rustdoc, MSRV green on every push; device jobs auto-activate |
 | Scheduler (priority classes, tickless timers, accounting) | `kernel/sched` | 1 | run order, deadlines and overruns proven by deterministic host tests + 24 h on target |
 | Interrupt model (static IRQ table, ISR→task, latency) | `kernel/irq` + arch | 1 | measured ISR entry/exit and wake latency in `docs/latency.md` |
 | Logging (defmt, RAM ring, flash ring, crash dump) | `kernel/log` | 1 | crash log survives reset and is readable over console + MQTT |
@@ -188,7 +207,8 @@ esp_sdk_rustc/
 │   ├── kconfig/                # vendored kconfiglib + menuconfig (ISC)
 │   └── gen/                    # genconfig, dtsgen, board tables
 ├── tests/                      # host integration, HIL scripts, ci matrix
-└── docs/                       # PLAN, ARCHITECTURE, CONFIGURATION, DRIVERS, ADRs, latency, power
+├── .github/workflows/          # ci.yml: fmt, clippy, tests, docs, MSRV, gated device/config/HIL
+└── docs/                       # PLAN, ARCHITECTURE, CONFIGURATION, DRIVERS, CI, SDK, MIGRATION
 ```
 
 Why so many small crates: feature isolation (`SOC_*`), host-testable pure logic, and a hard rule that
@@ -214,7 +234,9 @@ No product code. Establish what is actually true about the hardware and the tool
       `CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE`, does it honour `otadata`? If not, build one once,
       store it under `boards/`, flash it from `xtask`.
 - [ ] Check the host tools the config system needs: `dtc` (present, 1.7.0), `cpp`, `python3`.
-- [ ] Land workspace skeleton, `xtask`, CI (fmt, clippy, build S3, build C6, host tests), ADRs.
+- [ ] Land workspace skeleton, `xtask`, ADRs.
+- [ ] **CI:** fmt, clippy, host tests, rustdoc, MSRV on every push; gated S3/C6 device builds,
+      config matrix and HIL hooks ready for later phases ([CI.md](CI.md)).
 - [ ] Spike (1 day): can the local `esp32sim` emulator boot an `esp-hal` image?
 
 **Demo:** `cargo xtask flash` puts a blinking, logging firmware on the board; CI is green.
@@ -222,9 +244,10 @@ No product code. Establish what is actually true about the hardware and the tool
 
 ### Phase 1 — TinyRTOS core: scheduler, interrupts, logging (3 weeks)
 
-- [ ] **Scheduler:** 4 classes (`Ctrl/App/Net/Idle`), per-class executor with its own stack (8 KiB),
-      round-robin inside a class, ready bitmask, `spawn`/`spawn_periodic`, `sleep_until`, `yield`,
-      `suspend`/`resume`, starvation aging.
+- [x] **Scheduler core (seed landed):** 4 classes (`Ctrl/App/Net/Idle`), round-robin ready bitmask,
+      fixed timer heap, generation-based sleep cancellation, 10 host tests — `kernel/src/sched.rs`.
+- [ ] **Scheduler integration:** per-class executor with its own stack (8 KiB), `spawn`/
+      `spawn_periodic`, `yield`, `suspend`/`resume`, starvation aging, `sched` stats.
 - [ ] **Timers:** static deadline heap (32 entries), tickless arm/disarm, period-overrun detection.
 - [ ] **Accounting:** CCOUNT/`mcycle` sampling at 1 kHz, per-task run time, wake count, max latency,
       overruns; `sched` console command renders the table.
@@ -393,7 +416,7 @@ passes.
 
 | Milestone | Content | Phase | Target |
 |---|---|---|---|
-| **M0** | Repo skeleton, toolchain, CI, blink + log | 0 | week 1 |
+| **M0** | Repo skeleton, toolchain, **CI (build + unit tests)**, blink + log | 0 | week 1 |
 | **M1** | TinyRTOS: scheduler, interrupts, logging, watchdog, console | 1 | week 4 |
 | **M2** | Kconfig + DTS + codegen + driver core + buses | 2 | week 7 |
 | **M3** | EEPROM, MTD/flash, KV, DMA, crypto KATs on hardware | 3 | week 11 |

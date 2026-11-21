@@ -1,6 +1,6 @@
 # Architecture
 
-**Status:** draft v0.4 · 2026-09-21
+**Status:** draft v0.5 · 2026-09-21
 Companion to [PLAN.md](PLAN.md). This document is the design the phases implement.
 
 ---
@@ -144,6 +144,8 @@ The scheduler is real, and it is priority-based; it is **not** preemptive (ADR-0
 - **Timers:** static heap of 32 `TimerEntry { deadline, task_id, generation }`; `sleep_until`,
   `sleep`, `spawn_periodic`. A period overrun (task not run before its next deadline) fires
   `Event::Fault(Overrun { task })` and is counted per task.
+- **Status:** the core is implemented and host-tested in `kernel/src/sched.rs` (ready bitmask queues,
+  timer heap, generation-based cancellation); executor integration is Phase 1.
 - **Wake latency targets:** ISR → task ≤ 50 µs p99 at 240 MHz; timer wake jitter ≤ 100 µs;
   console command response ≤ 20 ms.
 - **Tasks are async futures, so there are no per-task stacks.** The stack belongs to the executor
@@ -471,7 +473,23 @@ of the offending symbols. Target: ≤ 450 KiB binary for the sensor node without
 
 ---
 
-## 9. Security posture (v1)
+## 9. CI and test gates
+
+The pipeline is part of the architecture, not an afterthought: the kernel is host-testable by
+construction, and every layer has a gate that runs without hardware except the last one.
+
+| Gate | Runs | Blocks |
+|---|---|---|
+| fmt, clippy, rustdoc | every push | merge |
+| host unit tests (scheduler, config codegen, contract fixtures) | every push | merge |
+| MSRV 1.95 | every push | merge |
+| S3 / C6 release build | when `soc/*` lands | merge |
+| config matrix (`allyesconfig`, `allnoconfig`, strict binding) | Phase 2+ | merge |
+| HIL (flash, provisioning, MQTT contract, OTA rollback, sleep current) | self-hosted runner | release |
+
+Details, caching and local equivalents: [CI.md](CI.md).
+
+## 10. Security posture (v1)
 
 | Aspect | v1 | Later |
 |---|---|---|

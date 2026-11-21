@@ -1,0 +1,15 @@
+[package]
+name = "esp-sdk-kernel"
+description = "TinyRTOS kernel core for the esp-sdk: scheduler, time and kernel services"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[lib]
+path = "src/lib.rs"
+
+[lints]
+workspace = true
