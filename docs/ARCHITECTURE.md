@@ -25,6 +25,7 @@ for `x86_64` and what makes the C6 port a matter of one new crate.
 ```
 esp-sdk-hal        traits, no_std, no esp-hal  (compiles on host)
 esp-sdk-arch-*     impls; depends on esp-hal, esp-radio, board pin map
+esp-sdk-boot       partitions · otadata · image verification · crash record
 esp-sdk-kernel     depends on esp-sdk-hal only
 esp-sdk-drivers    depends on esp-sdk-kernel + esp-sdk-hal
 esp-sdk-net        depends on drivers + kernel
@@ -63,6 +64,49 @@ Key points:
 - **`main` returns `!`** and hands control to the executor. There is no "super loop".
 - **Crash record** is written before reset in the panic handler and read back on the next boot;
   three consecutive abnormal boots enter safe mode (no app tasks, provisioning AP only).
+
+### 2.1 Bootloader: buy or build
+
+The boot chain has three stages, and only the middle one is ours to lose:
+
+| Stage | Who provides it | Replaceable | What it does |
+|---|---|---|---|
+| 1. Mask ROM | Espressif silicon | never | reads flash at 0x0, verifies header, hands over to stage 2; also the UART/USB download mode that unbricks the board |
+| 2. Bootloader | ESP-IDF binary, ~21 KB, bundled in `espflash` at 0x0 | **yes** | flash + PSRAM/clock init, partition table, `otadata` slot selection, image checksum/SHA-256/signature check, rollback flag, jump to app |
+| 3. App | us (`esp-hal` + TinyRTOS) | of course | everything the product does |
+
+**v1 decision (ADR-009): buy stage 2, own everything that decides what runs.** Concretely:
+
+- The prebuilt IDF bootloader stays, because slot selection, image validation, rollback and the
+  secure-boot/encryption hooks are already written and tested. Reimplementing them is a month of
+  work whose failure mode is a bricked node.
+- We own the **app-side** boot contract: partition table, `otadata` writes, "image pending verify"
+  / "valid" marking, crash record in RTC RAM, safe mode. That is the code that actually decides
+  whether a field update survives — see `esp-sdk-boot` in the crate layout.
+- **Rollback is not free even with the IDF bootloader**: it only works if the bootloader was built
+  with `CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y`, and the prebuilt images widely used with
+  `espflash` do not have it. Phase 0 verifies this; if disabled, `xtask bootloader` builds one
+  once (IDF v5.5 is already installed here) and flashes it at 0x0. This is also the bug in
+  `smart_home_idf` today — its `sdkconfig` has rollback disabled.
+- **App images stay ESP-IDF format** (`esp_bootloader_esp_idf::esp_app_desc!`, segment layout,
+  checksum/sha256). That single constraint is what keeps "build our own bootloader later" cheap.
+
+**What building our own would buy, and cost** (the Phase 6 spike):
+
+| | Buy (IDF) | Build (Rust) |
+|---|---|---|
+| Effort to first boot | 0 | ~1 week (ROM → our code → hello) |
+| Effort to production | 0 | ~3–5 weeks: image parsing, MMU/cache mapping, `otadata`, PSRAM init, watchdog, logging, tooling |
+| Size budget | 21 KB in a 32 KB slot | ~32 KB unless `PARTITION_TABLE_OFFSET` is moved (it is configurable, at the cost of both bootloader and app agreeing on the new offset) |
+| Secure boot / flash encryption | inherited | lost unless reimplemented — realistically never |
+| Boot time | ~30–50 ms | ~10–15 ms; irrelevant for a mains-powered smarthome node, relevant for a coin-cell sensor |
+| Failure mode | none, it is field-proven | boot loop = physical recovery via ROM download mode (GPIO0 + reset), so recoverable but not remotely |
+| Ownership / learning | low | high |
+
+Recommendation: keep the IDF bootloader through v1.0, keep the app image IDF-compatible, and
+revisit only if the Phase 5 measurements show a concrete cost (boot time on battery nodes, or a
+feature the IDF bootloader cannot express). A "no 2nd stage at all" design — app at 0x0 — is
+deliberately rejected: it gives up OTA and partitioning to save one flash read.
 
 ---
 

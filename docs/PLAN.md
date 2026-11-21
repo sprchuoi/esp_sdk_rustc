@@ -59,6 +59,7 @@ Phase 1 starts; changing one later is expensive.
 | ADR-006 | Smarthome integration | MQTT + Home Assistant discovery (as `smart_home_idf`) | Native Matter on-device | Matter on ESP32-S3 is a multi-month detour; the Pi already bridges MQTT → Matter |
 | ADR-007 | Portability proof | ESP32-C6 (RISC-V, upstream target) | Classic ESP32 (Xtensa LX6) | C6 builds without the esp toolchain fork and exposes API leaks fastest |
 | ADR-008 | OS name | `tinytos` (workspace `esp-sdk`, crates `esp-sdk-*`) | — | Cosmetic; change now if you dislike it |
+| ADR-009 | 2nd-stage bootloader | **Buy**: prebuilt ESP-IDF bootloader (espflash-bundled) + our own app-side boot/OTA/rollback logic | **Build**: Rust bootloader at 0x0 | OTA slot selection, image validation, rollback and secure boot already exist and are cheap; our app image stays IDF-format so a Rust bootloader remains a drop-in option later (Phase 6 spike). See [ARCHITECTURE §2.1](ARCHITECTURE.md#21-bootloader-buy-or-build) |
 
 ---
 
@@ -111,6 +112,7 @@ esp_sdk_rustc/
 │   ├── esp-sdk-arch-esp32s3/   # impls for S3 (xtensa-esp32s3-none-elf)
 │   ├── esp-sdk-arch-esp32c6/   # impls for C6 (riscv32imac-unknown-none-elf)
 │   ├── esp-sdk-arch-host/      # mock impls for `cargo test` on x86_64
+│   ├── esp-sdk-boot/           # partition table, otadata, image verify, crash record
 │   ├── esp-sdk-drivers/        # gpio, i2c, pwm, adc, onewire, button, sensors
 │   ├── esp-sdk-net/            # wifi, dhcp, mqtt codec/client, sntp
 │   ├── esp-sdk-services/       # provisioning, discovery, ota, telemetry, config
@@ -147,6 +149,10 @@ wrong assumption here costs a week later.
 - [ ] Confirm board revision and real flash/PSRAM (`espflash board-info`): N16R8 vs N8R2 matters —
       wrong PSRAM mode is a boot loop, not a build error.
 - [ ] Flash a minimal `esp-hal` blink + `defmt` log; record boot time and binary size as the baseline.
+- [ ] **Bootloader ground truth:** identify which `bootloader.bin` espflash writes at 0x0, check
+      whether it was built with `CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE` (the prebuilt ones usually
+      are not), and confirm `otadata` states are honoured. If not, build one IDF bootloader once,
+      store it under `boards/` and flash it from `xtask`. OTA rollback is dead without this.
 - [ ] Land workspace skeleton, `xtask`, CI (fmt, clippy, build S3, build C6, host tests), ADRs.
 - [ ] Spike (timeboxed, 1 day): can the local `esp32sim` emulator boot an `esp-hal` image? If yes,
       it becomes a fast CI smoke test; if no, we do not depend on it.
@@ -241,6 +247,13 @@ published; 7-day soak passes.
 BLE provisioning, Matter bridge on-device, ESP-NOW mesh, TLS with PSK, OTA delta, ULP sensor
 sampling, multi-node gateway.
 
+**Rust 2nd-stage bootloader spike** (decision gate, ~1 week): boot ROM → our bootloader at 0x0 →
+our app, on S3 only, non-secure and unencrypted. Scope: partition table + `otadata` selection,
+app image validation (SHA-256), PSRAM init, `xtask` producing/flashing the image, recovery via ROM
+download mode demonstrated. Out of scope: secure boot, flash encryption, anti-rollback eFuses.
+Only taken further if the Phase 5 measurements show a real cost to the IDF bootloader (boot time,
+size, or a feature we cannot get otherwise).
+
 ---
 
 ## 6. Milestones
@@ -285,12 +298,14 @@ feedback. It is never the *only* verification — real hardware remains the gate
 | R6 | Flash wear / config corruption | Bricked nodes | Dual-slot + rollback, CRC + atomic commit, safe mode, serial recovery |
 | R7 | Scope creep (Matter, voice, cloud) | Slips v1.0 | Non-goals list is normative; backlog only |
 | R8 | Async starvation from a blocking driver | Missed deadlines, watchdog resets | Driver rule: no blocking > 1 ms in executor context; watchdog catches violations |
+| R9 | Prebuilt bootloader ignores `otadata` rollback (config disabled at build time) | OTA has no safety net — a bad image bricks the node in the field | Phase 0 ground truth + `xtask bootloader` ships a rollback-enabled IDF bootloader; verify by flashing a deliberately broken image |
+| R10 | Custom bootloader attempt | Weeks lost, bricked boards | Deferred to a Phase 6 spike with explicit scope; app images stay IDF-compatible so the option stays open |
 
 ---
 
 ## 9. Open questions
 
-1. **Confirm ADR-001…008** (especially async vs preemptive — this changes the kernel design).
+1. **Confirm ADR-001…009** (especially async vs preemptive, and buy-vs-build the bootloader).
 2. **Hardware on hand:** S3 DevKitC-1 N16R8? Which sensors/relays? A C6 board for Phase 5?
 3. **Node types for the MVP:** sensor-only, actuator-only, or combined? Drives the first app.
 4. **MQTT broker:** existing Mosquitto on the Pi / `Smart_Server`, or a fresh one?
