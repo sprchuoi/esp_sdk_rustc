@@ -24,16 +24,30 @@ const MANIFEST: NodeManifest = NodeManifest {
 app!(MANIFEST, board = boards::Esp32S3DevKitC1);
 ```
 
-Everything else — WiFi provisioning, MQTT, Home Assistant discovery, OTA, watchdog, config
-storage — is the SDK's job.
+Everything else — scheduler, interrupts, logging, crypto, DMA, WiFi, MQTT, Home Assistant
+discovery, OTA, sleep management, watchdog, config storage — is the SDK's job.
+
+## What's in the box
+
+| Capability | What you get |
+|---|---|
+| **Scheduler** | priority classes (`Ctrl/App/Net/Idle`), tickless timers, round-robin within class, CPU accounting, overrun detection, starvation guard |
+| **Interrupts** | static IRQ table, ISR→task wake path, bounded critical sections, measured latency |
+| **Logging** | `defmt`, runtime level filter, RAM ring, 64 KiB flash ring, crash dump that survives reset |
+| **Crypto** | SHA-256, HMAC, AES-GCM, TRNG, Ed25519 — hardware accelerators + RustCrypto fallback, KAT-tested |
+| **DMA** | move-owned buffers, static pools, async SPI/UART/ADC transfers, cache-safe PSRAM path |
+| **Sleep** | light sleep, WiFi modem sleep, deep sleep profile, wake sources, measured current |
+| **Storage** | atomic log-structured KV, sealed secrets, forensic log partition |
+| **Network** | WiFi provisioning (serial + portal), MQTT with LWT/QoS1, SNTP, HA discovery |
+| **OTA** | dual slot, SHA-256 + Ed25519, rollback on failed boot, safe mode |
 
 ## Shape of the stack
 
 ```
 apps/            sensor-node · actuator-node
 services/        provisioning · mqtt + HA discovery · ota · telemetry
-drivers/         gpio · i2c sensors · pwm · adc · onewire
-kernel (TinyRTOS) tasks · time · sync · event bus · kv store · power · supervisor
+drivers/         gpio · i2c/spi/uart · pwm · adc · dma
+kernel (TinyRTOS) scheduler · interrupts · time · sync · bus · kv · crypto · log · power
 arch/            esp32s3 · esp32c6 · host mock     ← the portability boundary
 silicon          esp-hal 1.2 + esp-radio + embassy  (rented, not written)
 ```
@@ -46,11 +60,11 @@ Rust `no_std`, async-first, static allocation, dual-slot OTA with rollback. Firs
 | Milestone | Content | Target |
 |---|---|---|
 | M0 | Toolchain, skeleton, CI, blink + log | week 1 |
-| M1 | Kernel v0: tasks, time, sync, console, watchdog | week 3 |
-| M2 | Sensor node on hardware, persisted config | week 5 |
-| M3 | WiFi + MQTT + provisioning, 72 h soak | week 8 |
-| M4 | HA discovery, actuators, OTA with rollback | week 11 |
-| M5 | C6 port, power management, 7-day soak → v1.0 | week 14 |
+| M1 | TinyRTOS: scheduler, interrupts, logging, watchdog, console | week 4 |
+| M2 | Drivers, DMA, KV, crypto KATs on hardware | week 7 |
+| M3 | WiFi + MQTT + provisioning, 72 h soak | week 10 |
+| M4 | HA discovery, actuators, signed OTA with rollback | week 13 |
+| M5 | Sleep/power profiles, C6 port, 7-day soak → v1.0 | week 16 |
 
 ## Non-goals
 
@@ -58,8 +72,8 @@ Matter stack, cloud backend, voice assistant, a new LLVM backend, a new WiFi PHY
 
 ## Documents
 
-- [Plan](docs/PLAN.md) — phases, decisions (ADR-001…008), milestones, risks
-- [Architecture](docs/ARCHITECTURE.md) — boot flow, kernel, traits, memory map, device model
+- [Plan](docs/PLAN.md) — phases, decisions (ADR-001…012), milestones, risks
+- [Architecture](docs/ARCHITECTURE.md) — scheduler, interrupts, DMA, crypto, sleep, memory map, device model
 
 ## License
 
