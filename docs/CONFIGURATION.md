@@ -318,10 +318,34 @@ most valuable habit borrowed from the Linux build.
 
 ---
 
-## 8. Anti-patterns (rejected by design)
+## 8. Downstream consumers (the published SDK)
 
-- **Cargo-feature matrix as the product interface** — unreadable combinations, no defaults, no
-  validation. Kconfig replaces it; features remain internal.
+Inside this repo, Kconfig is authoritative. A **published crate** cannot be: a crates.io consumer
+must build from `Cargo.toml` + `Cargo.lock` alone, and a library must never read a project-global
+`.config` (it breaks docs.rs, reproducible builds and every consumer that forgets the file).
+
+So the boundary is:
+
+| Layer | SDK repo | Customer project |
+|---|---|---|
+| Selection | Kconfig + defconfig | Cargo features (small curated set) |
+| Hardware | `boards/*/board.dts` | their own `board.dts` |
+| Codegen | `xtask build` | `esp-sdk-build` in `build.rs` |
+| Convenience | `menuconfig` | `cargo esp-sdk menuconfig` → writes the feature set, then `cargo esp-sdk build` |
+
+`cargo esp-sdk` uses the same Kconfig definitions shipped as data, computes the feature set and
+invokes Cargo with `--features`; the customer's `Cargo.toml` stays the source of truth for a plain
+`cargo build`. `esp-sdk-build` validates that every `compatible` in the board file has an enabled
+driver and names the missing feature in the error.
+
+Full contract: [SDK.md](SDK.md).
+
+## 9. Anti-patterns (rejected by design)
+
+- **A global `.config` consumed by a published library** — unbuildable for consumers, and
+  unreproducible. Features are the compile-time contract; Kconfig is the authoring front-end.
+- **A feature per driver** — the combination space explodes. Features are per *class*
+  (`eeprom`, `flash`, `wifi`), and the board file validates what is actually needed.
 - **Pin numbers in drivers or apps** — pins are board data.
 - **Runtime probing/discovery of hardware we already know** — the board file is the truth; a missing
   device is a build error.
@@ -333,7 +357,7 @@ most valuable habit borrowed from the Linux build.
 
 ---
 
-## 9. Open points
+## 10. Open points
 
 1. kconfiglib vendoring vs a native Rust parser (front-end swap is cheap; the format stays).
 2. DTS-`dtc` (chosen) vs TOML manifest. DTS buys overlays, `cpp` includes, tooling and familiarity;

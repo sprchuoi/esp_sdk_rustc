@@ -1,6 +1,6 @@
 # Architecture
 
-**Status:** draft v0.3 · 2026-09-21
+**Status:** draft v0.4 · 2026-09-21
 Companion to [PLAN.md](PLAN.md). This document is the design the phases implement.
 
 ---
@@ -15,6 +15,10 @@ L2  kernel (TinyRTOS) scheduler · interrupts · time · sync · event bus · dr
 L1  hal / arch       traits + esp-hal glue + board pin maps (per chip)
 L0  silicon          esp32s3 · esp32c6 · host (mock)
 ```
+
+**Published boundary:** this tree is the SDK, published as `esp-sdk` (facade) plus implementation
+crates. A consumer depends on the facade, enables a small curated feature set and supplies a
+`board.dts`; libraries never read a project-global config. See [SDK.md](SDK.md).
 
 **Rule:** dependencies only point down. `kernel/` depends on `hal/` traits, never on `drivers/`,
 `subsys/` or `soc/`. `hal/` itself contains no chip-specific code; it defines traits and re-exports

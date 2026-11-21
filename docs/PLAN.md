@@ -1,15 +1,16 @@
 # esp_sdk_rustc — Build Plan
 
 **Status:** draft v0.3 · 2026-09-21
-**Goal:** a Rust SDK for ESP32 smart-home nodes that ships an OS — a tiny RTOS with the scheduler,
+**Goal:** a Rust **SDK** for ESP32 smart-home nodes that ships an OS — a tiny RTOS with the scheduler,
 drivers, network and device framework — portable across chips and boards the way a Linux kernel is:
-configuration-driven, hardware described in data, drivers bound by compatible string.
+configuration-driven, hardware described in data, drivers bound by compatible string. Customers
+depend on it to build their own products; `apps/` here are examples.
 
 | | |
 |---|---|
 | Target silicon | **ESP32-S3** first (Xtensa LX7, 2 cores, 16 MB flash / 8 MB PSRAM), then ESP32-C6 (RISC-V) as the portability proof |
 | Language | Rust, `no_std`, async-first |
-| Product | MQTT smart-home node: sensors, actuators, Home Assistant discovery, OTA |
+| Product | **SDK** (published crates + examples); first consumer: `smart_home_idf` migration |
 | Not this | Matter stack, cloud backend, voice, a new LLVM backend, a new WiFi PHY |
 
 ---
@@ -62,7 +63,7 @@ Phase 1 starts; changing one later is expensive.
 | ID | Decision | Proposed choice | Alternative | Why |
 |---|---|---|---|---|
 | ADR-001 | HAL foundation | `esp-hal` 1.2.x + `esp-radio` + `embassy` | Own PAC-level HAL from scratch | Years of Xtensa/bootloader/PSRAM/radio-blob work for no product value |
-| ADR-002 | Concurrency model | **Priority-class scheduler over async tasks** (cooperative); hard-real-time work in IRQ handlers or on a dedicated core | Preemptive priority kernel with asm context switch | Async futures have no per-task stacks, so preemption means writing Xtensa window-switching in Rust. The scheduler still gives priorities, deadlines, accounting and tickless idle; revisit in a Phase 7 spike |
+| ADR-002 | Concurrency model | **Priority-class scheduler over async tasks** (cooperative); hard-real-time work in IRQ handlers or on a dedicated core | Preemptive priority kernel with asm context switch | Async futures have no per-task stacks, so preemption means writing Xtensa window-switching in Rust. The scheduler still gives priorities, deadlines, accounting and tickless idle; revisit in a Phase 9 spike |
 | ADR-003 | Runtime | `no_std` | `esp-idf-hal` (`std`, FreeRTOS underneath) | We cannot own the scheduler while FreeRTOS owns it |
 | ADR-004 | Network stack | `embassy-net` (smoltcp) over a `NetDevice` trait | Own lwIP/own TCP | smoltcp is proven in `no_std`, gives `embedded-io-async` streams; the trait keeps Ethernet/WiFi swappable |
 | ADR-005 | MQTT | `minimq` spike behind a thin `MqttClient` trait so we can swap to our own 3.1.1 codec | Adopt `rust-mqtt` wholesale | QoS1 + LWT + reconnect are the hard parts; a trait boundary keeps lock-in at the codec only |
@@ -77,6 +78,9 @@ Phase 1 starts; changing one later is expensive.
 | ADR-014 | Hardware description | **DTS** (`cpp` + `dtc` 1.7) parsed at build time into a `BoardIR`, code-generated board tables; TOML front-end possible later | TOML/RON board manifest | DTS is the Linux model: includes, overlays, tooling, compatible strings. `dtc` is already installed |
 | ADR-015 | Driver binding | Static registry + `compatible` matching + probe/deferred-probe, no modules, no hotplug | Runtime driver loading | Same as Linux minus the parts we cannot use on a 512 KiB MCU; build-time binding keeps size and failure modes small |
 | ADR-016 | Storage stack | MTD core + range-checked partitions + **KV + log + OTA**, no general filesystem in v1 | littlefs from day one | KV/log/OTA cover the product; a filesystem adds C bindgen and wear/format risk. `embedded-storage` adapter keeps it open |
+| ADR-017 | SDK distribution boundary | Published crates expose a **small Cargo feature contract**; Kconfig is the authoring/CI front-end that produces feature sets; `esp-sdk-build` compiles the customer's `board.dts` | Ship a global `.config` consumed by libraries | A crates.io consumer must build from `Cargo.lock` + features alone; libraries cannot read a project-global config. Features stay curated so the matrix does not explode |
+| ADR-018 | Migration strategy | **Freeze the external contract, shadow-run, then cut over per node**; keep the IDF image as rollback | Big-bang rewrite | Documentation and code disagree in the C++ repo; the broker contract is positional, so it must be captured from code and diffed, not assumed. See [MIGRATION.md](MIGRATION.md) |
+| ADR-019 | Versioning | Lockstep `0.x` across crates, one tag, `cargo semver-checks` on the facade, MSRV 1.95 | Independent crate versions | One version is the only thing a customer can reason about before 1.0; independent versions triple the release matrix for no benefit |
 
 ---
 
@@ -134,8 +138,10 @@ Two documents carry the detail:
 | MQTT (LWT, QoS1, reconnect) + SNTP | `subsys/net` | 4 | 72 h soak, AP flap, broker restart |
 | HA discovery + device model | `subsys/smarthome` | 5 | entities appear and control from HA |
 | OTA (SHA-256 + Ed25519, dual slot, rollback) | `subsys/ota` + boot | 5 | bad image rolls back, good image updates |
+| **SDK packaging + 0.1 release** | facade, `esp-sdk-build`, `cargo-esp-sdk` | 6 | an external project builds and flashes from published crates |
+| **`smart_home_idf` migration** | `apps/sensor-node`, compat console | 7 | contract fixtures pass on hardware; fleet cut over |
 | Sleep (light, deep, modem) + power profiles | `kernel/power` | 6 | measured current/wake latency, battery node runs 30 days |
-| C6 port | `soc/esp32c6` | 6 | same app source builds and runs |
+| C6 port | `soc/esp32c6` | 8 | same app source builds and runs |
 
 ---
 
@@ -317,7 +323,45 @@ OTA; a corrupted image and a bad signature both roll back.
 **Exit:** new sensor = one driver + three manifest lines; rollback proven with the rollback-enabled
 bootloader.
 
-### Phase 6 — Power, portability and hardening (3 weeks)
+### Phase 6 — Packaging, release engineering, 0.1 (2 weeks)
+
+The SDK becomes a thing someone can install.
+
+- [ ] **Facade** `esp-sdk`: curated feature contract, re-exports, `compile_error!` on invalid
+      combinations, `#![deny(missing_docs)]`; `esp-sdk-build` (DTS + validation as a build dep);
+      `cargo-esp-sdk` CLI (`new`, `board`, `build`, `flash`, `monitor`, `menuconfig`).
+- [ ] **Release plumbing:** publish order, `cargo publish --dry-run`, `cargo semver-checks`,
+      `cargo public-api` snapshot diff, `cargo-deny`, changelog, tags, MSRV job.
+- [ ] **Examples** build for S3 (and C6 where possible) in CI; a consumer smoke project outside the
+      workspace depends on the packaged crates and builds from them.
+- [ ] **Docs:** rustdoc with `docsrs` cfg, mdBook getting-started, per-crate READMEs, LICENSE files.
+- [ ] Tag **v0.1.0**.
+
+**Demo:** `cargo install cargo-esp-sdk`, scaffold a project in an empty directory, `cargo esp-sdk
+build`, flash it — no checkout of this repo required.
+**Exit:** an external consumer builds from published crates; release checklist is a script, not a
+wiki page.
+
+### Phase 7 — Migrate `smart_home_idf` (3 weeks)
+
+The real acceptance test: an existing product runs on the SDK. Full plan in
+[MIGRATION.md](MIGRATION.md).
+
+- [ ] **Contract capture:** fixtures for status, telemetry, command, ack, LWT from a running C++
+      node; resolve the doc/code contradictions in writing.
+- [ ] **Compat layer:** `wifi_set`, `mqtt_set`, `mqtt_auth`, `mqtt_device`, `mqtt_status`,
+      `mqtt_clear`, `mqtt_ota_url` map onto KV; status/telemetry topics unchanged.
+- [ ] **Shadow run:** SDK node with a distinct id on the same broker; differential test in CI
+      (volatile fields allow-listed).
+- [ ] **Bench cutover:** provisioning, HA (feature-gated), reboot command, OTA, 24 h soak.
+- [ ] **Rollback proven:** OTA back to the IDF image from the inactive slot.
+- [ ] Fleet cutover, `smart_home_idf` archived with a pointer here.
+
+**Demo:** the production node runs SDK firmware, publishes the identical contract, updates over OTA
+and rolls back to the old firmware on a bad image.
+**Exit:** migration exit criteria in [MIGRATION.md §8](MIGRATION.md#8-exit-criteria-migration-done).
+
+### Phase 8 — Power, portability and hardening (3 weeks)
 
 - [ ] **Sleep:** idle → light sleep (GPIO/UART/timer wake), WiFi modem sleep, deep sleep `Battery`
       profile, RTC retention, driver `suspend`/`resume`.
@@ -334,7 +378,7 @@ bootloader.
 passes.
 **Exit:** v1.0 — tagged, documented, reproducible from a clean machine.
 
-### Phase 7 — Backlog (not scheduled)
+### Phase 9 — Backlog (not scheduled)
 
 - **Preemptive scheduler lane** (spike, 1 week): acceptance test is a 1 kHz control loop that never
   misses; only if a real workload needs it. Adds per-task stacks and Xtensa window switching.
@@ -355,7 +399,9 @@ passes.
 | **M3** | EEPROM, MTD/flash, KV, DMA, crypto KATs on hardware | 3 | week 11 |
 | **M4** | WiFi netdev, provisioning, MQTT, 72 h soak | 4 | week 14 |
 | **M5** | HA discovery, actuators, signed OTA with rollback | 5 | week 17 |
-| **M6** | Sleep/power, C6 port, 7-day soak → v1.0 | 6 | week 20 |
+| **M6** | **SDK v0.1 published**, external consumer builds and flashes | 6 | week 19 |
+| **M7** | **`smart_home_idf` runs on the SDK**, contract parity on hardware | 7 | week 22 |
+| **M8** | Sleep/power, C6 port, 7-day soak → **v1.0** | 8 | week 25 |
 
 ---
 
@@ -365,7 +411,7 @@ passes.
 |---|---|---|
 | Pure logic (codec, config, manifest, state machines) | `cargo test` with host arch | every PR, coverage ≥ 80 % on these crates |
 | Scheduler | deterministic host harness + 24 h on target | Phase 1, nightly after |
-| Interrupts | scope-measured ISR entry/exit + wake latency | Phase 1, re-checked Phase 6 |
+| Interrupts | scope-measured ISR entry/exit + wake latency | Phase 1, re-checked Phase 8 |
 | Config/codegen | snapshot tests of `.config` → generated files; `allyesconfig`/`allnoconfig` builds | Phase 2 |
 | Board binding | strict CI: every `compatible` in a defconfig must bind | Phase 2, every PR |
 | Drivers | `selftest` + fault injection (unplug, timeout, NAK) | Phase 3 |
@@ -376,7 +422,7 @@ passes.
 | NET | host tests vs Mosquitto (Docker) + HIL soak, two netdevs | Phase 4 |
 | Smarthome | discovery payload snapshots + real Home Assistant | Phase 5 |
 | OTA | bad signature, corrupted image, power-cut mid-write, rollback | Phase 5, each release |
-| Sleep/power | current trace per state, wake latency, 30-day battery simulation | Phase 6 |
+| Sleep/power | current trace per state, wake latency, 30-day battery simulation | Phase 8 |
 | Portability | CI build matrix S3 × C6, both flashed before release | every release |
 
 Simulation: `esp32sim` (local, Xtensa S3, boots real firmware) is worth a Phase 0 spike for fast CI
@@ -398,7 +444,7 @@ feedback. It is never the *only* verification — real hardware remains the gate
 | R8 | Async starvation from a blocking driver | Missed deadlines, watchdog resets | No blocking > 1 ms in executor context; overrun accounting |
 | R9 | Prebuilt bootloader ignores `otadata` rollback | OTA has no safety net | Phase 0 ground truth + `xtask bootloader`; proven with a bad image |
 | R10 | Custom bootloader attempt | Weeks lost, bricked boards | Deferred to Phase 7 spike with explicit scope |
-| R11 | "RTOS" expectation mismatch (someone expects preemption) | Wrong mental model | Scheduler semantics documented/tested; hard-real-time lane via IRQ/dedicated core; preemption is a Phase 7 opt-in |
+| R11 | "RTOS" expectation mismatch (someone expects preemption) | Wrong mental model | Scheduler semantics documented/tested; hard-real-time lane via IRQ/dedicated core; preemption is a Phase 9 opt-in |
 | R12 | DMA cache coherency on S3 PSRAM | Silent corruption | Internal RAM default; cache-safe PSRAM API; stress + coherency checks |
 | R13 | Crypto size and side channels | Flash blowout, weak secrets | Feature-gated backends, size report per feature, `subtle`, no secret logging |
 | R14 | Sleep/wake regressions | Field failures, dead battery | `suspend`/`resume` contract, sleep soak, power measurement |
@@ -406,28 +452,40 @@ feedback. It is never the *only* verification — real hardware remains the gate
 | R16 | `dtc`/`fdt` host dependency | Builds fail on machines without dtc | Document + check in `xtask setup`; `BoardIR` allows a TOML front-end later |
 | R17 | EEPROM wear (1 M cycles) | Dead config store | Log-structured `EepromKv`, write-on-change, wear stats, flash KV when available |
 | R18 | Disabled drivers rot (never compiled) | Broken `allyesconfig` late | `allyesconfig` in CI from Phase 2; strict binding on defconfigs |
+| R19 | Published API lock-in (semver) before the design settles | Expensive breaking changes, angry consumers | Only the facade is "public"; unstable crates are re-exported but documented as unstable until 1.0; semver-checks in CI |
+| R20 | Migration contract drift (topics, payloads, keepalive) | Smart_Server silently breaks, HA entities vanish | Capture from code, golden fixtures, shadow node with distinct id, differential test blocks the release |
+| R21 | NVS → KV credential loss at cutover | Nodes need physical re-provisioning | Documented re-provision procedure in the migration runbook; importer backlogged |
+| R22 | Feature-combination explosion for consumers | Confusing errors, unbuildable setups | Small curated feature set, `compile_error!` on conflicts, CI builds the documented combinations |
 
 ---
 
 ## 9. Open questions
 
-1. **Confirm ADR-001…016** (async-vs-preemptive, bootloader buy-vs-build, Kconfig, DTS, driver
-   binding, storage stack).
-2. **Config format:** DTS (my recommendation, `dtc` already installed) or a simpler TOML board file?
+1. **Confirm ADR-001…019** (async-vs-preemptive, bootloader buy-vs-build, Kconfig, DTS, driver
+   binding, storage stack, distribution boundary, migration strategy, versioning).
+2. **Publish destination:** crates.io (`esp-sdk*` all free today) or git dependency until 0.1 is
+   proven by the migration?
+3. **Topic schema at cutover:** keep `smart_home/devices/<id>/...` (code today) or move to the
+   `smart_home/<id>/{availability,status,<ch>/state,cmd/<target>}` schema that `ROADMAP.md` proposed
+   and never implemented? Keeping it is zero-risk for Smart_Server; changing it needs a server PR
+   and a migration window.
+4. **Config format:** DTS (my recommendation, `dtc` already installed) or a simpler TOML board file?
    Both can emit the same `BoardIR`; the choice affects contributor familiarity and overlays.
-3. **Portability scope:** S3 + C6 enough, or must classic ESP32 also be a target in v1?
-4. **Hard real-time requirement:** tightest deadline in your workload? Zero-cross dimming or motor
+5. **Portability scope:** S3 + C6 enough, or must classic ESP32 also be a target in v1?
+6. **Hard real-time requirement:** tightest deadline in your workload? Zero-cross dimming or motor
    control would pull IRQ/dedicated-core design (and maybe preemption) earlier.
-5. **Hardware on hand:** S3 DevKitC-1 N16R8? Which sensors/relays? A C6 board for Phase 6?
-6. **Node types for the MVP:** sensor-only, actuator-only, or combined?
-7. **Crypto scope for v1:** OTA signature + sealed config only, or device identity keys and TLS too?
-8. **Power source:** mains-only or battery nodes in the first release?
-9. **Name:** `tinytos` + `esp-sdk-*` acceptable, or rename before the tree exists?
+7. **Hardware on hand:** S3 DevKitC-1 N16R8? Which sensors/relays? A C6 board for Phase 8?
+8. **Node types for the MVP:** sensor-only, actuator-only, or combined?
+9. **Crypto scope for v1:** OTA signature + sealed config only, or device identity keys and TLS too?
+10. **Power source:** mains-only or battery nodes in the first release?
+11. **Name:** `tinytos` + `esp-sdk-*` acceptable, or rename before the tree exists?
 
 ---
 
 ## 10. Definition of done (v1.0)
 
+- An **external project** (outside this repo) builds and flashes from the published crates.
+- `smart_home_idf` runs on the SDK with contract parity on hardware.
 - Clean-machine build: `cargo xtask build --board devkitc1 --app sensor-node` from a fresh clone.
 - Same source tree produces S3 and C6 images from different defconfigs; CI builds `allyesconfig` and
   `allnoconfig`.
