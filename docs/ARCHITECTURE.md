@@ -1,6 +1,6 @@
 # Architecture
 
-**Status:** draft v0.2 · 2026-09-21
+**Status:** draft v0.3 · 2026-09-21
 Companion to [PLAN.md](PLAN.md). This document is the design the phases implement.
 
 ---
@@ -10,29 +10,34 @@ Companion to [PLAN.md](PLAN.md). This document is the design the phases implemen
 ```
 L5  apps/            sensor-node, actuator-node, gateway, examples
 L4  services         provisioning · mqtt/discovery · ota · telemetry · time
-L3  drivers          gpio · button · i2c/spi/uart · pwm · adc · onewire · dma · sensors
-L2  kernel (TinyRTOS) scheduler · interrupts · time · sync · event bus · kv · crypto · log · power · supervisor
+L3  drivers          bus (i2c/spi/uart/1wire) · eeprom · mtd/flash · net/wifi · gpio/pwm/adc · sensors
+L2  kernel (TinyRTOS) scheduler · interrupts · time · sync · event bus · driver core · kv · crypto · log · power
 L1  hal / arch       traits + esp-hal glue + board pin maps (per chip)
 L0  silicon          esp32s3 · esp32c6 · host (mock)
 ```
 
-**Rule:** dependencies only point down. `esp-sdk-kernel` depends on `esp-sdk-hal` traits, never on
-`esp-sdk-net` or `esp-sdk-services`. `esp-sdk-hal` itself contains no chip-specific code; it defines
-traits and re-exports the subset of `esp-hal` types that leak through (`Instant`, `Error`, GPIO
-handles). Only `esp-sdk-arch-*` may `use esp_hal::…` directly. This is what lets the kernel compile
-for `x86_64` and what makes the C6 port a matter of one new crate.
+**Rule:** dependencies only point down. `kernel/` depends on `hal/` traits, never on `drivers/`,
+`subsys/` or `soc/`. `hal/` itself contains no chip-specific code; it defines traits and re-exports
+the subset of `esp-hal` types that leak through (`Instant`, `Error`, GPIO handles). Only `soc/` and
+`arch/` may `use esp_hal::…` directly. This is what lets the kernel compile for `x86_64` and what
+makes the C6 port one new `soc/` crate. `cargo xtask check-deps` enforces the arrows.
 
 ```
-esp-sdk-hal        traits, no_std, no esp-hal  (compiles on host)
-esp-sdk-arch-*     impls; depends on esp-hal, esp-radio, board pin map
-esp-sdk-boot       partitions · otadata · image verification · crash record
-esp-sdk-kernel     scheduler · interrupts · time · sync · bus · kv · crypto · log · power
-esp-sdk-crypto     hash/hmac/aead/rng/signature traits + hw/sw backends
-esp-sdk-drivers    gpio · buses · pwm · adc · dma · sensors
-esp-sdk-net        wifi · dhcp · mqtt · sntp
-esp-sdk-services   provisioning · discovery · ota · telemetry
-esp-sdk-smarthome  device model (pure logic, host-testable)
+hal/               traits only: Serial, I2cBus, SpiBus, GpioPin, Eeprom, Mtd, NetDevice, PowerMode
+kernel/            scheduler · interrupts · time · sync · bus · driver core · kv · log · power
+arch/{xtensa,riscv} CPU, IRQ entry, linker, context  (only place with unsafe + asm)
+soc/{esp32s3,c6}   clocks, peripherals, flash, dma, wifi glue; implements the HAL traits
+drivers/{bus,eeprom,mtd,net,gpio,sensor}   compatibles + probe, no board constants
+subsys/{storage,net,ota,smarthome}         services over drivers + kernel
+boards/<board>     board.dts + defconfig (data only)
+config/            generated: sdkconfig.rs, board.rs, cfg flags
 ```
+
+Generated config is the only place a feature switch is consumed: `Kconfig` + `board.dts` →
+`esp-sdk-config` → every crate. See [CONFIGURATION.md](CONFIGURATION.md) for the pipeline and
+[DRIVERS.md](DRIVERS.md) for the probe model. Allowed dependencies are enforced by `cargo xtask
+check-deps`: `kernel/` may not depend on `soc/`, `drivers/` or `subsys/`; `drivers/` may not depend
+on `subsys/`.
 
 ---
 
@@ -240,7 +245,7 @@ it, it makes it safe.
 
 ### 3.8 Crypto
 
-`esp-sdk-crypto` is a thin front-end with two backends:
+`subsys/crypto` is a thin front-end with two backends:
 
 | Trait | HW backend (S3: AES, SHA, HMAC, RSA/MPI, TRNG) | SW backend (RustCrypto) |
 |---|---|---|
@@ -316,14 +321,23 @@ pub trait SpiBus { async fn transfer(&mut self, tx: &[u8], rx: &mut [u8]) -> Res
 pub trait Pwm { fn set_duty(&mut self, permille: u16); fn enable(&mut self, on: bool); }
 pub trait Adc { async fn sample(&mut self) -> Result<u16>; }
 pub trait DmaChannel { async fn transfer(&mut self, buf: Buffer) -> (Result<()>, Buffer); }
-pub trait FlashRegion { fn read(&mut self, off: u32, b: &mut [u8]) -> Result<()>;
-                        fn write(&mut self, off: u32, b: &[u8]) -> Result<()>;
-                        fn erase(&mut self, sector: u32) -> Result<()>; }
+pub trait Eeprom { fn capacity(&self) -> u32; fn page_size(&self) -> usize;
+                   async fn read(&mut self, off: u32, buf: &mut [u8]) -> Result<()>;
+                   async fn write(&mut self, off: u32, data: &[u8]) -> Result<()>; }
+pub trait Mtd { fn size(&self) -> u64; fn erase_size(&self) -> u32;
+                fn read(&mut self, off: u64, buf: &mut [u8]) -> Result<()>;
+                fn erase(&mut self, off: u64, len: u64) -> Result<()>;
+                fn write(&mut self, off: u64, data: &[u8]) -> Result<()>; }
+pub trait NetDevice { fn name(&self) -> &'static str; fn mtu(&self) -> usize;
+                      async fn up(&mut self) -> Result<()>;
+                      fn link(&self) -> LinkState; fn stats(&self) -> NetStats; }
 pub trait Rng { fn fill(&mut self, buf: &mut [u8]); }
-pub trait WifiDriver { /* join, leave, link state, RSSI, events */ }
 pub trait PowerMode { async fn light_sleep(&mut self, wake: WakeSources);
                       fn deep_sleep(&mut self, wake: WakeSources) -> !; }
 ```
+
+Full contracts (page sizes, write-cycle timing, partition guards, netdev stats) are in
+[DRIVERS.md](DRIVERS.md).
 
 - Chip selection is a compile-time feature: `chip-esp32s3`, `chip-esp32c6`, `chip-host`.
 - Pin maps live in `boards/*`, never in drivers; apps name resources (`board.relay[0]`), not GPIOs.
@@ -331,7 +345,7 @@ pub trait PowerMode { async fn light_sleep(&mut self, wake: WakeSources);
   so kernel/services/manifest tests run under `cargo test` in milliseconds.
 
 **Portability checklist** (enforced by review): no `unsafe`, no `esp_hal` import, no chip-specific
-constant, no `#[cfg(target_arch)]` outside `esp-sdk-arch-*`.
+constant, no `#[cfg(target_arch)]` outside `arch/` and `soc/`.
 
 ---
 
@@ -415,7 +429,7 @@ Entity ids are stable forever — they are HA identity; renaming is a migration.
 |---|---|
 | kernel statics (scheduler, timers, queues) | ≤ 12 KiB |
 | executor stacks (3 × 8 KiB) | 24 KiB |
-| drivers + DMA pools | ≤ 16 KiB |
+| drivers + DMA pools | ≤ 16 KiB (EEPROM/MTD/NET state is static, measured) |
 | crypto working buffers | ≤ 4 KiB |
 | net buffers (smoltcp, esp-radio) | ≤ 64 KiB |
 | app state | ≤ 16 KiB |
@@ -441,8 +455,12 @@ of the offending symbols. Target: ≤ 450 KiB binary for the sensor node without
 - **Crypto KATs:** NIST vectors for SHA-256, HMAC, AES-GCM; RFC 8032 for Ed25519 — HW and SW backends
   must agree byte for byte.
 - **DMA stress:** back-to-back transfers, error injection, PSRAM cache-safe path, abort/restart.
-- **Self-test command** (`selftest`): bus scan, sensor ID, relay click, flash r/w/crc, crypto KAT,
-  DMA loopback.
+- **Self-test command** (`selftest`): bus scan, sensor ID, relay click, flash r/w/crc, EEPROM
+  verify, crypto KAT, DMA loopback.
+- **Config snapshots:** `.config` + `board.dts` → generated files compared byte-for-byte, so a
+  codegen change is reviewed as a diff rather than discovered at runtime.
+- **Binding test:** every `compatible` in a defconfig's board file must resolve to a driver at build
+  time; an unbound node is a CI failure.
 - **Fault injection** feature: bus errors, truncated flash writes, dropped MQTT packets — used by the
   Phase 5 soak.
 - **Power measurement** harness: current trace per state, wake latency, energy per report.
