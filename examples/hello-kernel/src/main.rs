@@ -10,6 +10,7 @@
 #![no_main]
 
 use core::fmt::Write as _;
+use core::sync::atomic::{AtomicU32, AtomicU8, Ordering};
 
 use esp_backtrace as _;
 use esp_hal::main;
@@ -27,6 +28,9 @@ use esp_sdk_kernel::supervisor::Supervisor;
 
 esp_bootloader_esp_idf::esp_app_desc!();
 
+static I2C_FOUND: AtomicU8 = AtomicU8::new(0);
+static BOOT_US: AtomicU32 = AtomicU32::new(0);
+
 const CTRL: TaskId = TaskId::new(0);
 const SENSOR: TaskId = TaskId::new(1);
 const NET: TaskId = TaskId::new(2);
@@ -41,6 +45,37 @@ fn cmd_version(_args: &[&str], out: &mut dyn ConsoleIo) {
 
 fn cmd_sched(_args: &[&str], out: &mut dyn ConsoleIo) {
     let _ = writeln!(out, "classes=ctrl,app,net tasks=3");
+}
+
+fn cmd_status(_args: &[&str], out: &mut dyn ConsoleIo) {
+    let uptime_ms = Instant::now().duration_since_epoch().as_micros() / 1_000;
+    let _ = writeln!(
+        out,
+        "uptime_ms={uptime_ms} boot=1 health=ok reset={:?}",
+        esp_hal::system::reset_reason()
+    );
+}
+
+fn cmd_mem(_args: &[&str], out: &mut dyn ConsoleIo) {
+    let _ = writeln!(
+        out,
+        "mem allocator=none kernel=static i2c_devices={}",
+        I2C_FOUND.load(Ordering::Relaxed)
+    );
+}
+
+fn cmd_selftest(_args: &[&str], out: &mut dyn ConsoleIo) {
+    let _ = writeln!(
+        out,
+        "selftest: i2c_devices={} timer_boot_us={} rwdt=armed",
+        I2C_FOUND.load(Ordering::Relaxed),
+        BOOT_US.load(Ordering::Relaxed)
+    );
+}
+
+fn cmd_reset(_args: &[&str], out: &mut dyn ConsoleIo) {
+    let _ = writeln!(out, "reset: software reset requested");
+    esp_hal::system::software_reset();
 }
 
 /// Stop feeding the hardware watchdog. The loop never returns, so the RWDT
@@ -103,7 +138,7 @@ mod irq_selftest {
 #[main]
 fn main() -> ! {
     let peripherals = esp_hal::init(esp_hal::Config::default());
-    let mut serial = Serial::uart0();
+    let mut serial = Serial::uart0(peripherals.UART0, peripherals.GPIO43, peripherals.GPIO44).unwrap();
     let mut led = Output::new(peripherals.GPIO2, false);
 
     let _ = writeln!(serial);
@@ -123,6 +158,7 @@ fn main() -> ! {
                 found += 1;
             }
         }
+        I2C_FOUND.store(found, Ordering::Relaxed);
         let _ = writeln!(serial, "i2c scan: {found} device(s)");
     }
 
@@ -131,6 +167,7 @@ fn main() -> ! {
     let timg0 = TimerGroup::new(peripherals.TIMG0);
     let mut timer = Timer::new(timg0.timer0);
     let boot_us = timer.now_us();
+    BOOT_US.store(boot_us as u32, Ordering::Relaxed);
     timer.arm(boot_us.saturating_add(50_000));
     timer.disarm();
     let _ = writeln!(serial, "timer: boot_us={boot_us}");
@@ -147,7 +184,7 @@ fn main() -> ! {
 
     // The console framework running over the SDK HAL: UART0 is a `fmt::Write`
     // sink, commands are static, no allocation.
-    let mut console = Console::<3>::new();
+    let mut console = Console::<7>::new();
     console
         .register(Command::new("version", "print firmware version", cmd_version))
         .unwrap();
@@ -156,6 +193,18 @@ fn main() -> ! {
         .unwrap();
     console
         .register(Command::new("rwdt-starve", "stop the RWDT feed (expect reset)", cmd_starve))
+        .unwrap();
+    console
+        .register(Command::new("status", "uptime, boot and reset reason", cmd_status))
+        .unwrap();
+    console
+        .register(Command::new("mem", "memory layout summary", cmd_mem))
+        .unwrap();
+    console
+        .register(Command::new("selftest", "i2c/timer/watchdog summary", cmd_selftest))
+        .unwrap();
+    console
+        .register(Command::new("reset", "software reset", cmd_reset))
         .unwrap();
     let _ = console.execute("help", &mut serial);
 

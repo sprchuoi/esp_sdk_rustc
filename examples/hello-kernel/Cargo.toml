@@ -19,3 +19,4 @@ debug = 2
 
 [features]
 irq-selftest = []
+hardware-uart = ["esp-sdk-esp32s3/hardware-uart"]

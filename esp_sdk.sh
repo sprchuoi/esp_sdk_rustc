@@ -204,13 +204,15 @@ cmd_console() {
   [ -f "$OUT/app.bin" ] || cmd_build
   local script
   script="$(mktemp)"
-  printf '0.3 uart0 help\n0.8 uart0 version\n' > "$script"
+  printf '0.3 uart0 help\n0.8 uart0 version\n1.2 uart0 status\n1.6 uart0 selftest\n' > "$script"
   log "driving the console over UART0"
   run_sim --bootloader "$OUT/bootloader.bin" --ptable "$OUT/partition-table.bin" \
     --app "$OUT/app.bin" --psram-mb 8 --script "$script"
   rm -f "$script"
   grep -q "commands:" "$TMP_LOG" || die "console help missing"
   grep -q "hello-kernel 0.1.0" "$TMP_LOG" || die "console command did not run"
+  grep -q "uptime_ms=" "$TMP_LOG" || die "status command did not run"
+  grep -q "selftest: i2c_devices=" "$TMP_LOG" || die "selftest command did not run"
   echo "CONSOLE OK: UART0 input, line echo and command dispatch"
 }
 
@@ -263,7 +265,9 @@ require_port() {
 }
 
 cmd_flash() {
-  [ -f "$OUT/app.bin" ] || cmd_build
+  # Hardware build needs the esp-hal UART backend for RX.
+  local features="${ESP_FEATURES:-hardware-uart}"
+  ESP_FEATURES="$features" cmd_build
   local port baud
   port="$(require_port)" || exit 1
   baud="${ESP_BAUD:-921600}"
@@ -296,7 +300,7 @@ cmd_monitor() {
   mkdir -p "$(dirname "$logfile")"
   reset="${ESP_NO_RESET:-0}"; reset=$((1 - reset))
   log "monitoring $port at $baud baud for ${seconds}s (log: $logfile)"
-  python3 - "$port" "$baud" "$seconds" "$logfile" "$reset" "${SEND_TEXT:-}" <<'PY'
+  python3 - "$port" "$baud" "$seconds" "$logfile" "$reset" "${SEND_TEXT:-}" "${ESP_SEND_DELAY:-1.0}" <<'PY'
 import sys, time
 try:
     import serial
@@ -305,6 +309,7 @@ except ImportError:
     sys.exit(1)
 
 port, baud, seconds, logfile, reset = sys.argv[1], int(sys.argv[2]), float(sys.argv[3]), sys.argv[4], sys.argv[5] == "1"
+send_delay = float(sys.argv[7]) if len(sys.argv) > 7 else 1.0
 send = sys.argv[6].encode() if len(sys.argv) > 6 else b""
 try:
     ser = serial.Serial()
@@ -326,7 +331,7 @@ if reset:
     ser.rts = False
 
 if send:
-    time.sleep(1.0)
+    time.sleep(send_delay)
     ser.write(send)
     ser.flush()
 

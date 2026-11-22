@@ -86,8 +86,9 @@ storm with the same handler is therefore a simulator issue, not a firmware one.
 ## Known issue (measured on hardware)
 
 TX works: the banner, console help, timer line, I2C scan and scheduler output all
-appear. RX does not yet: `--send` produces no echo. The raw UART0 FIFO read that
-works in esp32sim is not sufficient on silicon because the bootloader leaves the
-RX path unconfigured for this use. Next step is to switch `soc::Serial` RX to
-`esp_hal::uart::Uart` (the REG_UPDATE handshake only stalls in esp32sim) or to
-program CONF0/CONF1 explicitly.
+appear. RX does not: `--send` produces no echo with either backend — the raw
+UART0 FIFO read and the `hardware-uart` feature using `esp_hal::uart::Uart`.
+Flashing over the same CH343 proves host→board data reaches the chip, so the
+next checks are the UART0 pin mux / RX pin (GPIO44), `CONF0`/`CONF1`, and whether
+the CH343's RX net is actually wired to U0RXD on this board. The command set is
+verified in esp32sim meanwhile (`./esp_sdk.sh --console`).

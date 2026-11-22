@@ -7,8 +7,8 @@ Updated after the first real-hardware run (ESP32-S3 rev0.2, 16 MB flash, 8 MB PS
 | Item | State | Evidence | Remaining |
 |---|---|---|---|
 | **Console line editing** | done | `LineEditor`, 4 host tests, sim `--console` | — |
-| **Console commands** | partial | `help`, `version`, `sched` (static), `rwdt-starve` on target | `status/tasks/mem/log/reset/selftest`; needs a shared monitor state and UART RX |
-| **UART RX** | **broken on hardware** | `--send=help` produces no echo; TX works | enable RX via `esp_hal::uart::Uart` (hardware feature) or `CONF0/CONF1` |
+| **Console commands** | partial | `help`, `version`, `sched`, `status`, `mem`, `selftest`, `reset`, `rwdt-starve` registered; verified in sim `--console` | `tasks` and live `sched`/`log` need the shared monitor; no hardware RX |
+| **UART RX** | **broken on hardware** | esp-println raw FIFO *and* the new `esp_hal::uart::Uart` backend both receive nothing; TX/flashing work | check CH343 host→board direction, UART0 pin mux, or `CONF0/CONF1`; commands are verified in sim meanwhile |
 | **Scheduler integration** | partial | classes, round-robin, suspend/resume, aging, stats all host-tested | executor (8 KiB per class), `spawn`/`spawn_periodic`, `yield` |
 | **Timers** | mostly done | deadline heap (32), tickless `hal::Timer` + TIMG one-shot, overrun accounting | hardware periodic wake integration (executor) |
 | **Accounting** | partial | `begin_run`/`end_run`, wakes, max, overruns, `write_stats` | CCOUNT/1 kHz sampler; max latency; target rendering |

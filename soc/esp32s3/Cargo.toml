@@ -12,3 +12,6 @@ esp-println = { version = "0.18.0", features = ["esp32s3"] }
 [profile.release]
 opt-level = "s"
 lto = true
+
+[features]
+hardware-uart = []

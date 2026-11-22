@@ -35,18 +35,24 @@ pub const UART0_TX_GPIO: u8 = 43;
 /// UART0 RX on the ESP32-S3-DevKitC-1.
 pub const UART0_RX_GPIO: u8 = 44;
 
-/// The UART0 console.
+/// The UART0 console (esp-println backend, used by esp32sim).
 ///
 /// Writes go through esp-println's UART0 backend (GPIO43 TX / GPIO44 RX on the
 /// DevKitC-1), which is already initialised by the boot path. Reading is not
 /// wired yet: the console is write-only until the RX interrupt path lands.
+#[cfg(not(feature = "hardware-uart"))]
 pub struct Serial;
 
+#[cfg(not(feature = "hardware-uart"))]
 impl Serial {
     /// Create the console.
     #[must_use]
-    pub const fn uart0() -> Self {
-        Self
+    pub fn uart0(
+        _uart: impl Sized,
+        _tx: impl Sized,
+        _rx: impl Sized,
+    ) -> Result<Self, core::convert::Infallible> {
+        Ok(Self)
     }
 
     /// Pop one received byte, if the UART0 RX FIFO has one.
@@ -69,6 +75,7 @@ impl Serial {
     }
 }
 
+#[cfg(not(feature = "hardware-uart"))]
 impl fmt::Write for Serial {
     fn write_str(&mut self, text: &str) -> fmt::Result {
         esp_println::Printer::write_bytes(text.as_bytes());
@@ -76,6 +83,7 @@ impl fmt::Write for Serial {
     }
 }
 
+#[cfg(not(feature = "hardware-uart"))]
 impl hal::Serial for Serial {
     async fn write(&mut self, bytes: &[u8]) -> hal::Result<()> {
         esp_println::Printer::write_bytes(bytes);
@@ -260,6 +268,77 @@ impl hal::GpioPin for Output<'_> {
 
     fn get(&self) -> bool {
         self.pin.is_set_high()
+    }
+}
+
+/// The UART0 console on `esp-hal` (hardware backend).
+///
+/// esp-hal's REG_UPDATE handshake is not modelled by esp32sim, so this is
+/// selected only when flashing real silicon.
+#[cfg(feature = "hardware-uart")]
+pub struct Serial<'d> {
+    uart: esp_hal::uart::Uart<'d, Blocking>,
+}
+
+#[cfg(feature = "hardware-uart")]
+impl<'d> Serial<'d> {
+    /// Create the console on UART0.
+    ///
+    /// # Errors
+    /// [`esp_hal::uart::ConfigError`] when the configuration is unsupported.
+    pub fn uart0(
+        uart: impl esp_hal::uart::Instance + 'd,
+        tx: impl PeripheralOutput<'d>,
+        rx: impl PeripheralInput<'d>,
+    ) -> Result<Self, esp_hal::uart::ConfigError> {
+        Ok(Self {
+            uart: esp_hal::uart::Uart::new(uart, esp_hal::uart::Config::default())?
+                .with_tx(tx)
+                .with_rx(rx),
+        })
+    }
+
+    /// Pop one received byte, if ready.
+    pub fn read_byte(&mut self) -> Option<u8> {
+        if !self.uart.read_ready() {
+            return None;
+        }
+        let mut byte = [0u8];
+        self.uart.read(&mut byte).ok().map(|_| byte[0])
+    }
+}
+
+#[cfg(feature = "hardware-uart")]
+impl fmt::Write for Serial<'_> {
+    fn write_str(&mut self, text: &str) -> fmt::Result {
+        self.uart.write_str(text).map_err(|_| fmt::Error)
+    }
+}
+
+#[cfg(feature = "hardware-uart")]
+impl hal::Serial for Serial<'_> {
+    async fn write(&mut self, bytes: &[u8]) -> hal::Result<()> {
+        self.uart
+            .write(bytes)
+            .map(|_| ())
+            .map_err(|_| hal::Error::Bus)
+    }
+
+    async fn read(&mut self, buf: &mut [u8]) -> hal::Result<usize> {
+        let mut count = 0;
+        while count < buf.len() {
+            match self.read_byte() {
+                Some(byte) => {
+                    buf[count] = byte;
+                    count += 1;
+                }
+                None => break,
+            }
+        }
+        if count == 0 {
+            return Err(hal::Error::NotReady);
+        }
+        Ok(count)
     }
 }
 
