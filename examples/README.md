@@ -25,9 +25,12 @@ Build the image set and boot it:
 ./scripts/sim-smoke.sh                        # boots esp32sim and asserts the output
 ```
 
-Expected console (abridged):
+Expected console (abridged; the `ESP-IDF ... 2nd stage bootloader` line comes from the purchased
+bootloader, not from the app — see [docs/BOOT.md](../docs/BOOT.md#11-why-the-console-says-esp-idf-v551-2nd-stage-bootloader)):
 
 ```
+I (7) boot: ESP-IDF v5.5.1 2nd stage bootloader
+I (10) boot: Loaded app from partition at offset 0x10000
  esp-sdk hello-kernel on ESP32-S3
 [ctrl] tick t=0 ms
 [net ] publish sensor=0 t=0 ms

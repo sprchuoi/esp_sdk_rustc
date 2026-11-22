@@ -26,6 +26,31 @@ implements — and against CRC vectors produced by `otatool.py`.
 
 ---
 
+## 1.1 Why the console says "ESP-IDF v5.5.1 2nd stage bootloader"
+
+That line comes from the **bootloader binary**, not from the application. ADR-009 buys the second
+stage from ESP-IDF (Apache-2.0) instead of writing it, so its compiled-in banner is what you see.
+It does **not** mean the app runs ESP-IDF or FreeRTOS.
+
+The analogy is a PC: UEFI/GRUB boots first, then Linux runs. Here the ROM loads the IDF bootloader,
+which initialises flash/PSRAM, reads the partition table, validates the image and jumps. Everything
+after `Loaded app from partition at offset 0x10000` is our `no_std` image: TinyRTOS scheduler, IPC,
+diagnostics. No FreeRTOS, no `app_main`, no ESP-IDF task code is linked into the app.
+
+What that specific binary is:
+
+| Property | Value |
+|---|---|
+| File | `boards/esp32s3-devkitc-1/bootloader.bin` |
+| Built from | ESP-IDF v5.5.1, `esp32s3` |
+| Secure boot / flash encryption | off |
+| App rollback | **disabled** (Phase 0 replaces it with a rollback-enabled build) |
+| Size | 21 056 bytes at 0x0 |
+
+If we later build our own second stage (Phase 9 spike), the banner becomes ours — but so does the
+work: flash/PSRAM init, partition parsing, image checksum/SHA-256, MMU mapping, `otadata` handling,
+and we would lose secure boot and encryption, which the IDF bootloader implements for free.
+
 ## 2. Flash layout (16 MB, N16R8)
 
 | Region | Offset | Size | Notes |
