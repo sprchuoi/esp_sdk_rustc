@@ -1,6 +1,6 @@
 # esp_sdk_rustc — Build Plan
 
-**Status:** draft v0.9 · 2026-09-21
+**Status:** draft v0.10 · 2026-09-21
 **Goal:** a Rust **SDK** for ESP32 smart-home nodes that ships an OS — a tiny RTOS with the scheduler,
 drivers, network and device framework — portable across chips and boards the way a Linux kernel is:
 configuration-driven, hardware described in data, drivers bound by compatible string. Customers
@@ -81,6 +81,7 @@ are provisional defaults that can still be flipped cheaply.
 | ADR-017 | SDK distribution boundary | Published crates expose a **small Cargo feature contract**; Kconfig is the authoring/CI front-end that produces feature sets; `esp-sdk-build` compiles the customer's `board.dts` | Ship a global `.config` consumed by libraries | A crates.io consumer must build from `Cargo.lock` + features alone; libraries cannot read a project-global config. Features stay curated so the matrix does not explode |
 | ADR-018 | Migration strategy | **Freeze the external contract, shadow-run, then cut over per node**; keep the IDF image as rollback | Big-bang rewrite | Documentation and code disagree in the C++ repo; the broker contract is positional, so it must be captured from code and diffed, not assumed. See [MIGRATION.md](MIGRATION.md) |
 | ADR-019 | Versioning | Lockstep `0.x` across crates, one tag, `cargo semver-checks` on the facade, MSRV 1.95 | Independent crate versions | One version is the only thing a customer can reason about before 1.0; independent versions triple the release matrix for no benefit |
+| ADR-020 | Bootloader ownership | **Buy for v1** (ADR-009) + a gated **staged spike B0–B5** to own stage 2; the cheaper boot-manager-app option first if the need is a boot menu/recovery | Rewrite stage 2 immediately | Ownership buys boot menus, signature policy and branding, but the MMU/cache mapping, secure boot and flash encryption are weeks of UART-only debugging. [BOOTLOADER.md](BOOTLOADER.md) |
 
 ### 2.1 Locked by the owner
 
@@ -171,6 +172,7 @@ Two documents carry the detail:
 | HA discovery + device model | `subsys/smarthome` | 5 | entities appear and control from HA |
 | OTA (SHA-256 + Ed25519, dual slot, rollback) | `subsys/ota` + boot | 5 | bad image rolls back, good image updates |
 | **SDK packaging + 0.1 release** | facade, `esp-sdk-build`, `cargo-esp-sdk` | 6 | an external project builds and flashes from published crates |
+| **Custom bootloader (track B)** | `bootloader/` | parallel, gated | B0 banner → B1 table/otadata → B2 MMU+jump → B3 verify → B4 rollback → B5 menu |
 | **`smart_home_idf` migration** | `apps/sensor-node`, compat console | 7 | contract fixtures pass on hardware; fleet cut over |
 | Sleep (light, deep, modem) + power profiles | `kernel/power` | 6 | measured current/wake latency, battery node runs 30 days |
 | C6 port | `soc/esp32c6` | 8 | same app source builds and runs |
@@ -450,6 +452,23 @@ passes.
 - BLE provisioning, Matter bridge on-device, ESP-NOW mesh, TLS with PSK, delta OTA, ULP sampling.
 
 ---
+
+### Bootloader track (parallel, gated)
+
+Design, budget and risks: [BOOTLOADER.md](BOOTLOADER.md). ADR-020 keeps the IDF bootloader as the
+shipping default while this track proves the hard parts in esp32sim:
+
+| Stage | Deliverable | Gate |
+|---|---|---|
+| B0 | IRAM image at 0x0 prints a banner | visible over UART in esp32sim |
+| B1 | partition table + otadata read, slot choice | matches `boot/` unit tests |
+| B2 | cache/MMU mapping + jump to the app | app banner after ours |
+| B3 | checksum/SHA-256 verification | corrupted image refused |
+| B4 | rollback + boot-attempt counter | bad app returns to previous slot |
+| B5 | UART boot menu, Ed25519 policy | signed images, menu usable |
+
+Cheaper alternative if only boot *features* are needed: enable IDF rollback and ship a boot-manager
+app in the factory slot (days, not weeks).
 
 ## 6. Milestones
 

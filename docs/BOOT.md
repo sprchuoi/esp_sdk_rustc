@@ -47,9 +47,10 @@ What that specific binary is:
 | App rollback | **disabled** (Phase 0 replaces it with a rollback-enabled build) |
 | Size | 21 056 bytes at 0x0 |
 
-If we later build our own second stage (Phase 9 spike), the banner becomes ours — but so does the
-work: flash/PSRAM init, partition parsing, image checksum/SHA-256, MMU mapping, `otadata` handling,
-and we would lose secure boot and encryption, which the IDF bootloader implements for free.
+If we later build our own second stage, the banner becomes ours — but so does the work: flash/PSRAM
+init, partition parsing, image checksum/SHA-256, MMU mapping, `otadata` handling, and we would lose
+secure boot and encryption, which the IDF bootloader implements for free. The staged plan and cost
+model are in [BOOTLOADER.md](BOOTLOADER.md).
 
 ## 2. Flash layout (16 MB, N16R8)
 

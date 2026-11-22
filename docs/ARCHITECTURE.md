@@ -110,7 +110,8 @@ Buy vs build, at a glance:
 
 Recommendation: keep the IDF bootloader through v1.0 and revisit only if Phase 5 shows a concrete
 cost. A "no 2nd stage" design (app at 0x0) is rejected — it gives up OTA and partitioning to save
-one flash read. Phase 6 spike scope is in [PLAN.md](PLAN.md#5-phases).
+one flash read. Owning stage 2 is a gated track with a staged plan in
+[BOOTLOADER.md](BOOTLOADER.md).
 
 ---
 

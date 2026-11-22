@@ -158,6 +158,7 @@ Matter stack, cloud backend, voice assistant, a new LLVM backend, a new WiFi PHY
 - [Drivers](docs/DRIVERS.md) — driver model, buses, EEPROM, MTD/flash, NET
 - [Kernel](docs/KERNEL.md) — boot pathway, initcall levels, IPC, net service, esp32sim
 - [Boot](docs/BOOT.md) — partition table, otadata, rollback flow, app descriptor
+- [Bootloader](docs/BOOTLOADER.md) — owning stage 2: contract, budget, stages B0–B5
 - [CI](docs/CI.md) — pipeline, test layers, HIL, release gates
 - [SDK contract](docs/SDK.md) — crates, features, versioning, release policy
 - [Migration](docs/MIGRATION.md) — `smart_home_idf` parity and cutover
