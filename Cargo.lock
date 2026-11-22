@@ -3,5 +3,9 @@
 version = 4
 
 [[package]]
+name = "esp-sdk-hal"
+version = "0.1.0"
+
+[[package]]
 name = "esp-sdk-kernel"
 version = "0.1.0"

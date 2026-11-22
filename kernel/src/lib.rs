@@ -10,11 +10,22 @@
 //!
 //! The module deliberately knows nothing about a CPU, a clock or an executor.
 //! The architecture layer feeds it wake events and a monotonic timestamp, and
-//! the executor drives [`sched::Scheduler::next`]. That split is what lets the
+//! the executor drives [`sched::Scheduler::next_ready`]. That split is what lets the
 //! scheduler be unit-tested on the host with no hardware and no `std`.
 //!
-//! Later phases add, behind the same style of pure logic:
-//! interrupt dispatch tables, the sync primitives, the event bus, the KV store,
-//! the driver core and the power policy.
+//! Beyond the scheduler, the implemented pieces are [`time`] (monotonic
+//! instants), [`sync::Signal`] (ISR-to-task wake), [`log`] (level filter and a
+//! retained-record ring) and [`config`] (compile-time limits).
+//!
+//! Later phases add, behind the same style of pure logic: interrupt dispatch
+//! tables, the executor integration, the event bus, the KV store, the driver
+//! core and the power policy.
 
+pub mod config;
+pub mod log;
 pub mod sched;
+pub mod sync;
+pub mod time;
+
+#[cfg(test)]
+extern crate std;

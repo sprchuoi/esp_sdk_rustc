@@ -25,8 +25,9 @@ What runs on every push, what runs on hardware, and what a green build actually 
 |---|---|---|
 | `fmt` | every PR | `cargo fmt --all -- --check` |
 | `lint` | every PR | `cargo clippy --workspace --all-targets -- -D warnings` |
-| `test` | every PR | `cargo test --workspace --all-targets` (kernel currently: 10 scheduler tests), then `cargo doc` with `RUSTDOCFLAGS=-D warnings` |
+| `test` | every PR | `cargo test --workspace --all-targets --all-features` (36 tests: HAL mocks + kernel), then `cargo doc` with `RUSTDOCFLAGS=-D warnings` |
 | `msrv` | every PR | workspace compiles on Rust 1.95 (the `esp-hal` MSRV) |
+| `nostd` | every PR | workspace builds for `x86_64-unknown-none`, proving no accidental `std` dependency |
 | `device-esp32s3` | when `soc/esp32s3/` exists | release build for `xtensa-esp32s3-none-elf` with the esp toolchain |
 | `device-esp32c6` | when `soc/esp32c6/` exists | release build for `riscv32imac-unknown-none-elf` on upstream stable |
 | `config-matrix` | when `tools/gen/` exists | every defconfig + `allyesconfig` + `allnoconfig` + strict board binding |
@@ -42,9 +43,10 @@ with "verified".
 
 ```bash
 cargo fmt --all
-cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace --all-targets
-RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
+cargo clippy --workspace --all-targets --all-features -- -D warnings
+cargo test --workspace --all-targets --all-features
+RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps --all-features
+cargo check --workspace --all-features --target x86_64-unknown-none
 cargo +1.95.0 check --workspace --all-targets     # MSRV, once the toolchain is installed
 ```
 
@@ -108,6 +110,7 @@ The release workflow is added with Phase 6; until then releases are manual and f
 
 ## 8. Current state
 
-The repository has the Phase 1 seed only: `kernel/` with the scheduler core and its host tests.
-Everything else is documentation. The CI runs the four host jobs; device, config and HIL jobs are
-present and dormant by design, so the pipeline does not have to be rewritten when each phase lands.
+The repository has the Phase 1 seed: `hal/` (traits + host mocks) and `kernel/` (scheduler, time,
+`Signal`, log ring) with 36 host tests. The CI runs fmt, clippy, tests+docs, MSRV and a bare-metal
+`no_std` build; device, config-matrix and HIL jobs are present and dormant by design, so the pipeline
+does not have to be rewritten when each phase lands.

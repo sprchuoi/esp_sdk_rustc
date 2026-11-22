@@ -13,10 +13,10 @@
 //! [`Scheduler::advance_to`], which wakes every task whose deadline is due.
 
 /// Maximum number of schedulable tasks.
-pub const MAX_TASKS: usize = 32;
+pub const MAX_TASKS: usize = crate::config::MAX_TASKS;
 
 /// Maximum number of pending timers (including stale ones awaiting expiry).
-pub const MAX_TIMERS: usize = 32;
+pub const MAX_TIMERS: usize = crate::config::MAX_TIMERS;
 
 /// Errors returned by the scheduler core.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

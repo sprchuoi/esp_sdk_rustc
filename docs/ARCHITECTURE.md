@@ -1,6 +1,6 @@
 # Architecture
 
-**Status:** draft v0.5 · 2026-09-21
+**Status:** draft v0.6 · 2026-09-21
 Companion to [PLAN.md](PLAN.md). This document is the design the phases implement.
 
 ---
@@ -181,6 +181,9 @@ The scheduler is real, and it is priority-based; it is **not** preemptive (ADR-0
 
 ### 3.3 Time and timers
 
+*Implemented:* `Instant` (µs since boot) with checked/saturating arithmetic in `kernel/src/time.rs`.
+The deadline heap in the scheduler is the single source of timed wakeups.
+
 - `Instant` = 64-bit microseconds from SYSTIMER, monotonic over uptime; `embassy-time` driver
   installed on the same clock.
 - Wall clock = monotonic + offset, offset from SNTP and persisted in RTC RAM.
@@ -188,6 +191,9 @@ The scheduler is real, and it is priority-based; it is **not** preemptive (ADR-0
 - RTC keeps time across light sleep; deep sleep restores the offset and detects drift.
 
 ### 3.4 Synchronisation
+
+*Implemented:* `Signal` — an `AtomicBool` ISR→task flag with acquire/release ordering. Channels
+and mutexes need a waker plus interrupt masking and land with the executor integration.
 
 | Primitive | Use | ISR-safe |
 |---|---|---|
@@ -273,6 +279,10 @@ it, it makes it safe.
 
 ### 3.9 Logging and diagnostics
 
+*Implemented core:* `Level`, runtime `Filter`, and a fixed-capacity ring of numeric records
+(`code`, `arg`) that keeps the newest entries for a crash dump — no formatting, no allocation in the
+kernel; the host side renders codes.
+
 - `defmt` as the wire format, levels per module, compile-time filtering plus a runtime override
   (`log level debug`) from the console.
 - Sinks, in priority order: USB-Serial-JTAG (default), UART, 2 KiB RAM ring (always on, for crash
@@ -318,29 +328,30 @@ Two profiles, chosen by the app, both using the same kernel hooks:
 ## 4. Platform abstraction (L1)
 
 ```rust
-pub trait Platform { fn init(cfg: PlatformConfig) -> Self; fn reset_reason(&self) -> ResetReason; }
-pub trait Serial: embedded_io::Write + embedded_io::Read { fn set_baud(&mut self, b: u32); }
+pub trait Delay { fn delay_us(&mut self, us: u32); }
 pub trait GpioPin { fn set(&mut self, high: bool); fn get(&self) -> bool; }
-pub trait I2cBus { async fn write(&mut self, addr: u8, b: &[u8]) -> Result<()>;
+pub trait I2cBus { async fn write(&mut self, addr: u8, bytes: &[u8]) -> Result<()>;
                    async fn read(&mut self, addr: u8, buf: &mut [u8]) -> Result<()>; }
 pub trait SpiBus { async fn transfer(&mut self, tx: &[u8], rx: &mut [u8]) -> Result<()>; }
-pub trait Pwm { fn set_duty(&mut self, permille: u16); fn enable(&mut self, on: bool); }
-pub trait Adc { async fn sample(&mut self) -> Result<u16>; }
-pub trait DmaChannel { async fn transfer(&mut self, buf: Buffer) -> (Result<()>, Buffer); }
-pub trait Eeprom { fn capacity(&self) -> u32; fn page_size(&self) -> usize;
-                   async fn read(&mut self, off: u32, buf: &mut [u8]) -> Result<()>;
-                   async fn write(&mut self, off: u32, data: &[u8]) -> Result<()>; }
-pub trait Mtd { fn size(&self) -> u64; fn erase_size(&self) -> u32;
-                fn read(&mut self, off: u64, buf: &mut [u8]) -> Result<()>;
-                fn erase(&mut self, off: u64, len: u64) -> Result<()>;
-                fn write(&mut self, off: u64, data: &[u8]) -> Result<()>; }
-pub trait NetDevice { fn name(&self) -> &'static str; fn mtu(&self) -> usize;
-                      async fn up(&mut self) -> Result<()>;
-                      fn link(&self) -> LinkState; fn stats(&self) -> NetStats; }
+pub trait Serial { async fn write(&mut self, bytes: &[u8]) -> Result<()>;
+                   async fn read(&mut self, buf: &mut [u8]) -> Result<usize>; }
+pub trait Flash { fn capacity(&self) -> u64; fn erase_size(&self) -> u32;
+                  async fn read(&mut self, offset: u64, buf: &mut [u8]) -> Result<()>;
+                  async fn erase(&mut self, offset: u64, len: u64) -> Result<()>;
+                  async fn write(&mut self, offset: u64, data: &[u8]) -> Result<()>; }
 pub trait Rng { fn fill(&mut self, buf: &mut [u8]); }
-pub trait PowerMode { async fn light_sleep(&mut self, wake: WakeSources);
-                      fn deep_sleep(&mut self, wake: WakeSources) -> !; }
 ```
+
+*Implemented:* `hal/` (traits, `Error`, and the `mock` module). Device-class traits — `Eeprom`,
+`Mtd`, `NetDevice`, DMA buffers — build on these in `drivers/`; full contracts are in
+[DRIVERS.md](DRIVERS.md).
+
+- `hal::mock` provides always-ready I2C register devices, SPI loopback, serial capture, GPIO, NOR
+  flash with erase-before-write, and a recording delay — enough to test driver logic without a board.
+- Chip selection is a compile-time feature: `chip-esp32s3`, `chip-esp32c6`, `chip-host`.
+- Pin maps live in `boards/*`, never in drivers; apps name resources (`board.relay[0]`), not GPIOs.
+- The host arch implements every trait with mocks so kernel/services/manifest tests run under
+  `cargo test` in milliseconds.
 
 Full contracts (page sizes, write-cycle timing, partition guards, netdev stats) are in
 [DRIVERS.md](DRIVERS.md).
@@ -453,8 +464,8 @@ of the offending symbols. Target: ≤ 450 KiB binary for the sensor node without
 
 ## 8. Testing hooks built into the design
 
-- **Host arch** (`chip-host`): deterministic clock, scripted I2C/GPIO/Flash/DMA mocks, in-memory
-  KV — kernel/services/manifest tests run in milliseconds.
+- **Host arch** (`chip-host`): deterministic clock, scripted I2C/SPI/serial/GPIO/flash mocks
+  (`hal::mock`), in-memory KV — 36 host tests today, run in milliseconds.
 - **Scheduler tests:** deterministic single-threaded harness that pumps the executor and asserts run
   order, deadlines, overrun events and the starvation guard.
 - **Interrupt latency test:** GPIO toggle at ISR entry/exit, measured on a scope; recorded per release.

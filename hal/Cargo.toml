@@ -1,0 +1,16 @@
+[package]
+name = "esp-sdk-hal"
+description = "Hardware abstraction traits and host mocks for the esp-sdk"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[features]
+# Expose the host-side mock peripherals to other crates (tests, simulators).
+mock = []
+
+[lints]
+workspace = true

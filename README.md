@@ -10,8 +10,9 @@ Customers depend on it to build their own products. Everything under `apps/` her
 first real consumer is the migration of [`smart_home_idf`](https://github.com/sprchuoi/smart_home_idf)
 from ESP-IDF/C++ onto this SDK.
 
-**Status: Phase 1 seed.** The scheduler core lives in `kernel/` with host tests
-(`cargo test`); the rest is documentation and the phase plan:
+**Status: Phase 1 seed.** `hal/` has the trait set plus host mocks; `kernel/` has the scheduler
+core, monotonic time, `Signal`, and a level-filtered log ring — 36 host tests, clean `no_std` build
+for a bare-metal target. The rest is documentation and the phase plan:
 [PLAN](docs/PLAN.md) · [ARCHITECTURE](docs/ARCHITECTURE.md) · [CONFIGURATION](docs/CONFIGURATION.md) ·
 [DRIVERS](docs/DRIVERS.md) · [CI](docs/CI.md) · [SDK contract](docs/SDK.md) ·
 [MIGRATION](docs/MIGRATION.md).
@@ -128,10 +129,11 @@ before any cutover. Plan: [docs/MIGRATION.md](docs/MIGRATION.md).
 ## Development
 
 ```bash
-cargo test --workspace            # host tests (scheduler now, codegen/contracts later)
-cargo clippy --workspace --all-targets -- -D warnings
+cargo test --workspace --all-features          # 36 host tests (HAL mocks + kernel)
+cargo clippy --workspace --all-targets --all-features -- -D warnings
 cargo fmt --all -- --check
-RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
+RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps --all-features
+cargo check --workspace --all-features --target x86_64-unknown-none   # proves no_std
 ```
 
 CI runs exactly these on every push, plus MSRV 1.95; S3/C6 device builds, the config matrix and
