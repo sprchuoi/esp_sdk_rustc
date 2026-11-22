@@ -32,7 +32,7 @@ What runs on every push, what runs on hardware, and what a green build actually 
 | `device-esp32c6` | when `soc/esp32c6/` exists | release build for `riscv32imac-unknown-none-elf` on upstream stable |
 | `config-matrix` | when `tools/gen/` exists | every defconfig + `allyesconfig` + `allnoconfig` + strict board binding |
 | `hil` | when `HIL_RUNNER` is set | flash, boot, provisioning, MQTT contract, OTA rollback on a real board |
-| `simulation` | when `SIMULATION` is set | builds the Xtensa toolchain + esp32sim, boots `hello-kernel` on the real ROM/bootloader, asserts scheduler/IPC/diagnostics output |
+| `simulation` | when `SIMULATION` is set | builds the toolchain + esp32sim, boots `hello-kernel` (asserted) and the B0 bootloader image (asserted) |
 
 Gating is done with a `gate` step after checkout (job-level `hashFiles` cannot see a workspace that
 has not been checked out yet). A skipped device job prints a notice, so "green" is never confused

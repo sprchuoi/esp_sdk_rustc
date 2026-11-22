@@ -1,0 +1,13 @@
+[package]
+name = "esp-sdk-bootloader"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[[bin]]
+name = "esp-sdk-bootloader"
+path = "src/main.rs"
+
+[profile.release]
+opt-level = "s"
+lto = true

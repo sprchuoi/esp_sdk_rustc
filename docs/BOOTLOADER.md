@@ -76,7 +76,7 @@ permissions wrong produces a silent hang with no console.
 
 | Stage | Deliverable | Gate |
 |---|---|---|
-| **B0** | Image at 0x0 that prints a banner from IRAM and halts | boots in esp32sim; UART output visible |
+| **B0 ✅** | Image at 0x0 that prints a banner from IRAM and halts | boots in esp32sim; UART output visible |
 | **B1** | Partition table + otadata read; pick a slot; print the decision | matches `esp-sdk-boot` unit-test expectations |
 | **B2** | MMU/cache mapping + jump to the existing app | app banner appears after our bootloader banner |
 | **B3** | Image checksum + SHA-256 verification; refuse bad images | corrupted image → recovery/rollback |
@@ -84,6 +84,26 @@ permissions wrong produces a silent hang with no console.
 | **B5** | Boot menu / recovery entry; Ed25519 signature check | signed images only; menu usable on UART |
 
 B0–B2 prove the hard parts. B3–B5 are features on top and can land incrementally.
+
+### B0 result (landed)
+
+`bootloader/` is a 400-byte ESP image at 0x0. The ROM log shows:
+
+```
+load:0x403c0000,len:0x14c
+entry 0x403c0004
+
+[esp-sdk] bootloader B0: alive, running from IRAM
+```
+
+`scripts/bootloader-b0.sh` builds it, converts the ELF with `esptool elf2image`, boots esp32sim and
+asserts both the load address and the banner. Three things learned the hard way:
+
+1. Xtensa inline assembly requires `#![feature(asm_experimental_arch)]` on the esp toolchain.
+2. `l32r` literals must be emitted **before** the referencing code; otherwise the linker fails with
+   "literal placed after use". The linker script now orders `.literal` first.
+3. The ROM leaves a valid stack pointer, but B0 makes no calls, so window spills cannot occur yet.
+   B1 needs a runtime (window vectors) before it can call Rust.
 
 The existing `boot/` crate is reused wholesale for the table/otadata/descriptor logic; only the
 platform pieces (flash read, MMU, jump, console) are new and unsafe.

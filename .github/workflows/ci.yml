@@ -164,6 +164,7 @@ jobs:
       - name: fetch mask ROMs
         run: (cd third_party/esp32sim && tools/fetch-rom-elfs.sh web/wasm/fw)
       - run: ./scripts/sim-smoke.sh
+      - run: ./scripts/bootloader-b0.sh
 
   # Hardware-in-the-loop. Enabled by setting the repository variable
   # HIL_RUNNER to a self-hosted runner label (Phase 3+, needs a board).

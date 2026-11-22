@@ -460,7 +460,7 @@ shipping default while this track proves the hard parts in esp32sim:
 
 | Stage | Deliverable | Gate |
 |---|---|---|
-| B0 | IRAM image at 0x0 prints a banner | visible over UART in esp32sim |
+| B0 ✅ | IRAM image at 0x0 prints a banner | visible over UART in esp32sim; asserted by `scripts/bootloader-b0.sh` |
 | B1 | partition table + otadata read, slot choice | matches `boot/` unit tests |
 | B2 | cache/MMU mapping + jump to the app | app banner after ours |
 | B3 | checksum/SHA-256 verification | corrupted image refused |
