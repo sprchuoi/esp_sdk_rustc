@@ -1,6 +1,6 @@
 # Architecture
 
-**Status:** draft v0.7 · 2026-09-21
+**Status:** draft v0.8 · 2026-09-21
 Companion to [PLAN.md](PLAN.md). This document is the design the phases implement.
 
 ---
@@ -260,7 +260,10 @@ it, it makes it safe.
 
 ### 3.8 Crypto
 
-`subsys/crypto` is a thin front-end with two backends:
+*Implemented seed:* `kernel/src/crypto.rs` — streaming SHA-256 and HMAC-SHA256, pinned by NIST and
+RFC 4231 vectors, plus `constant_time_eq`. AEAD, Ed25519 and the hardware backends are Phase 3/5.
+
+The full front-end (`subsys/crypto`) will sit on two backends:
 
 | Trait | HW backend (S3: AES, SHA, HMAC, RSA/MPI, TRNG) | SW backend (RustCrypto) |
 |---|---|---|
@@ -311,6 +314,9 @@ Two profiles, chosen by the app, both using the same kernel hooks:
   catches.
 - State that must survive: crash record, boot counters, wall-clock offset, WiFi calibration data
   (RTC RAM / NVS). Everything else is rebuilt on wake.
+- *Implemented policy:* `kernel/src/power.rs` — `PowerManager` turns the next deadline, profile and
+  thresholds into an `Action` (`StayAwake`/`Wfi`/`Sleep { mode, wake }`), tracks the battery report
+  schedule, and records sleep statistics. Register sequences stay in `soc/`.
 - Measurements are part of the deliverable: current per state (active, modem sleep, light sleep,
   deep sleep), wake latency, energy per report, in `docs/power.md`, measured with a PPK2/INA219-class
   meter — numbers are recorded, never assumed.
@@ -325,6 +331,31 @@ Two profiles, chosen by the app, both using the same kernel hooks:
 - Panic handler: crash record → RTC RAM, log ring flush, reset.
 - Safe mode after 3 abnormal boots: no app tasks, serial console + provisioning AP, diagnostics
   published if credentials still work.
+
+### 3.12 Service manager
+
+A product is a set of services (storage, net, mqtt, telemetry) with start order and a restart
+policy. `kernel/src/service.rs` owns that state machine: ids, dependency-ordered boot (Kahn), cycle
+detection, `begin_start`/`mark_started`/`begin_stop`/`mark_stopped`, failure propagation to
+dependants, and restart backoff (0, 100, 500, 2000, 5000 ms, capped by policy). The executor and the
+board's supervisor drive the transitions; the manager itself is pure and host-tested.
+
+### 3.13 Metrics, memory and crash dump
+
+`kernel/src/metrics.rs` is the "how is it actually doing" layer:
+
+- **counters** — named `u64` values, fixed capacity, no allocation;
+- **memory** — per-region capacity/used and a **low-water mark**, because a free-heap reading at one
+  instant hides a slow leak; health thresholds are < 15 % free = degraded, < 5 % = critical;
+- **faults** — deduplicated by code with first/last timestamp and count, so a flapping error is one
+  row, not a log flood;
+- **crash record** — 24 bytes with magic + checksum, written by the panic handler to RTC RAM and
+  read on the next boot;
+- **dump** — `Diagnostics::dump(&mut impl fmt::Write)` renders uptime, memory, metrics, faults and
+  crash as a handful of `key=value` lines over UART, defmt or a test buffer.
+
+Health aggregates: memory critical dominates; a recorded fault, a crash record or low memory marks
+the node degraded.
 
 ---
 

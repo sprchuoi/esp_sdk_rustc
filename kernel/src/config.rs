@@ -20,3 +20,15 @@ pub const LOG_RING_CAPACITY: usize = 64;
 
 /// Default runtime log threshold; the console can raise or lower it.
 pub const DEFAULT_LOG_LEVEL: Level = Level::Info;
+
+/// Default number of services the manager can hold.
+pub const MAX_SERVICES: usize = 16;
+
+/// Default number of named counters in the diagnostics bundle.
+pub const METRIC_CAPACITY: usize = 24;
+
+/// Default number of tracked memory regions.
+pub const MEMORY_REGIONS: usize = 4;
+
+/// Default number of distinct fault codes retained.
+pub const FAULT_CAPACITY: usize = 16;

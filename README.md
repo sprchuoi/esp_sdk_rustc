@@ -11,9 +11,10 @@ first real consumer is the migration of [`smart_home_idf`](https://github.com/sp
 from ESP-IDF/C++ onto this SDK.
 
 **Status: Phase 2 seed.** `hal/` has the trait set plus host mocks; `kernel/` has the scheduler,
-monotonic time, `Signal` and a level-filtered log ring; `drivers/` has the binding model and an AT24
-EEPROM driver; `boot/` has partition validation, otadata selection and app-descriptor parsing —
-**82 host tests**, clean `no_std` build for a bare-metal target. The rest is documentation and the
+time, `Signal`, log ring, service manager, SHA-256/HMAC, power policy and diagnostics (metrics,
+memory low-water, faults, crash dump); `drivers/` has the binding model and an AT24 EEPROM driver;
+`boot/` has partition validation, otadata selection and app-descriptor parsing —
+**120 host tests**, clean `no_std` build for a bare-metal target. The rest is documentation and the
 phase plan:
 [PLAN](docs/PLAN.md) · [ARCHITECTURE](docs/ARCHITECTURE.md) · [CONFIGURATION](docs/CONFIGURATION.md) ·
 [DRIVERS](docs/DRIVERS.md) · [BOOT](docs/BOOT.md) · [CI](docs/CI.md) · [SDK contract](docs/SDK.md) ·
@@ -132,7 +133,7 @@ before any cutover. Plan: [docs/MIGRATION.md](docs/MIGRATION.md).
 ## Development
 
 ```bash
-cargo test --workspace --all-features          # 82 host tests (HAL, kernel, drivers, boot)
+cargo test --workspace --all-features          # 120 host tests (HAL, kernel, drivers, boot)
 cargo clippy --workspace --all-targets --all-features -- -D warnings
 cargo fmt --all -- --check
 RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps --all-features

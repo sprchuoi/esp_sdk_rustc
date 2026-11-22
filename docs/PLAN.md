@@ -1,6 +1,6 @@
 # esp_sdk_rustc — Build Plan
 
-**Status:** draft v0.7 · 2026-09-21
+**Status:** draft v0.8 · 2026-09-21
 **Goal:** a Rust **SDK** for ESP32 smart-home nodes that ships an OS — a tiny RTOS with the scheduler,
 drivers, network and device framework — portable across chips and boards the way a Linux kernel is:
 configuration-driven, hardware described in data, drivers bound by compatible string. Customers
@@ -143,6 +143,10 @@ Two documents carry the detail:
 | **CI + host unit tests** | `.github/workflows/ci.yml` | 0 | fmt, clippy, tests, rustdoc, MSRV and a no_std target build on every push; device jobs auto-activate |
 | **HAL traits + host mocks** | `hal/` | 1 | I2C/SPI/serial/GPIO/flash mocks drive driver logic in host tests |
 | **Kernel primitives** | `kernel/time`, `sync`, `log`, `config` | 1 | `Instant` arithmetic, `Signal`, level-filtered log ring, limits module |
+| **Service manager** | `kernel/service` | 1 | registration, dependency-ordered boot, failure propagation, restart backoff |
+| **Metrics + diagnostics** | `kernel/metrics` | 1 | counters, memory low-water/health, deduplicated faults, crash record, text dump |
+| **Crypto primitives** | `kernel/crypto` | 3 | SHA-256 and HMAC-SHA256 pinned by NIST/RFC vectors, constant-time compare |
+| **Power policy** | `kernel/power` | 6 | Mains/Battery profiles, sleep thresholds, wake sources, report schedule |
 | **Driver binding** | `drivers/model` | 2 | `DeviceNode`/`DriverDesc`, compatible matching, pre-order bind, unbound detection |
 | **AT24 EEPROM driver** | `drivers/eeprom` | 3 | page-aware writes, `tWR` wait, 1/2-byte addressing, host tests |
 | **Boot contract** | `boot/` | 5 | partition validation, otadata CRC/state/selection, app descriptor |
@@ -255,8 +259,16 @@ No product code. Establish what is actually true about the hardware and the tool
 - [x] **Sync starter:** `Signal` (atomic ISR→task flag) with cross-thread visibility test.
 - [x] **Log core:** `Level`/`Filter` and a fixed-capacity ring that keeps the newest records for a
       crash dump; numeric records only, no formatting in the kernel.
-- [x] **Config:** kernel limits in one module (`MAX_TASKS`, `MAX_TIMERS`, log capacity/level);
-      Phase 2 swaps them for Kconfig-generated values.
+- [x] **Config:** kernel limits in one module (`MAX_TASKS`, `MAX_TIMERS`, log capacity/level,
+      service/metric/fault capacities); Phase 2 swaps them for Kconfig-generated values.
+- [x] **Service manager:** typed ids, dependency-ordered boot, cycle detection, failure
+      propagation to dependants, restart policy with backoff.
+- [x] **Diagnostics:** named counters, per-region memory with a low-water mark and health
+      thresholds, deduplicated fault table, 24-byte crash record, `fmt::Write` dump.
+- [x] **Power policy:** idle→WFI→light-sleep→deep-sleep state machine with Mains/Battery profiles
+      (register-level sleep sequences stay in `soc/`).
+- [x] **Crypto seed:** SHA-256 + HMAC-SHA256 with NIST/RFC 4231 vectors and constant-time compare;
+      AEAD, Ed25519 and hardware backends remain Phase 3/5.
 - [ ] **Scheduler integration:** per-class executor with its own stack (8 KiB), `spawn`/
       `spawn_periodic`, `yield`, `suspend`/`resume`, starvation aging, `sched` stats.
 - [ ] **Timers:** static deadline heap (32 entries), tickless arm/disarm, period-overrun detection.
@@ -315,8 +327,9 @@ covered by snapshot tests.
       64 KiB circular log partition, OTA staging ranges.
 - [ ] **DMA:** move-owned `Buffer<N>`, static pools per peripheral, async SPI/UART/ADC, DMA error
       IRQ → abort/reset, cache-safe PSRAM path, abort/restart tests.
-- [ ] **Crypto:** `Sha256`, `Hmac`, `AesGcm`, `Rng` (TRNG+DRBG), `Ed25519` verify; HW backend on S3
-      and RustCrypto SW backend; NIST/RFC KATs in CI; `Secret<T>` redaction.
+- [x] **Crypto seed:** SHA-256, HMAC-SHA256, constant-time compare (`kernel/src/crypto.rs`).
+- [ ] **Crypto:** `AesGcm`, `Rng` (TRNG+DRBG), `Ed25519` verify; HW backend on S3 and RustCrypto SW
+      backend; NIST/RFC KATs in CI; `Secret<T>` redaction.
 - [ ] **GPIO/analog/input:** GPIO, PWM (LEDC), ADC oneshot, button with debounce; sensors BME280,
       BH1750, reed contact; `selftest` covering buses, EEPROM, flash, crypto KAT, DMA loopback.
 

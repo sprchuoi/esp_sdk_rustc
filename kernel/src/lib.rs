@@ -15,15 +15,22 @@
 //!
 //! Beyond the scheduler, the implemented pieces are [`time`] (monotonic
 //! instants), [`sync::Signal`] (ISR-to-task wake), [`log`] (level filter and a
-//! retained-record ring) and [`config`] (compile-time limits).
+//! retained-record ring), [`service`] (lifecycle and restart policy), [`crypto`]
+//! (SHA-256/HMAC), [`power`] (sleep policy), [`metrics`] (counters, memory
+//! accounting, faults and the diagnostics dump) and [`config`] (compile-time
+//! limits).
 //!
 //! Later phases add, behind the same style of pure logic: interrupt dispatch
 //! tables, the executor integration, the event bus, the KV store, the driver
 //! core and the power policy.
 
 pub mod config;
+pub mod crypto;
 pub mod log;
+pub mod metrics;
+pub mod power;
 pub mod sched;
+pub mod service;
 pub mod sync;
 pub mod time;
 
