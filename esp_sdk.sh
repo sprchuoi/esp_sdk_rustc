@@ -52,6 +52,7 @@ Hardware (USB attached; ESP_PORT overrides /dev/ttyACM* / /dev/ttyUSB*):
   --flash-erase  erase the whole flash first, then flash the three images
   --monitor[=N]  reset the board and capture N seconds of UART (default 15)
   --send=TEXT    with --monitor, write TEXT after reset ($'help\n' for CR/LF)
+  --terminal     interactive UART console (minicom), captures target/serial.log
   --hw           --flash then --monitor
 
   --all         --check --soc --build --bootloader --sim --console --sim-b0
@@ -357,6 +358,19 @@ print(f"\n[monitor] {total} bytes, saved to {logfile}", file=sys.stderr)
 PY
 }
 
+cmd_terminal() {
+  local port
+  port="$(require_port)" || return 1
+  command -v minicom >/dev/null || die "minicom is not installed (apt install minicom)"
+  local baud logfile
+  baud="${ESP_MONITOR_BAUD:-115200}"
+  logfile="$ROOT/target/serial.log"
+  mkdir -p "$(dirname "$logfile")"
+  log "interactive console on $port at $baud baud; capture: $logfile"
+  log "type commands (help/status/selftest), exit with Ctrl-A X"
+  minicom -D "$port" -b "$baud" -C "$logfile" -o
+}
+
 cmd_hw() {
   cmd_flash
   cmd_monitor
@@ -385,6 +399,7 @@ for arg in "$@"; do
     --monitor)    cmd_monitor ;;
     --monitor=*)  cmd_monitor "${arg#--monitor=}" ;;
     --send=*)     SEND_TEXT="${arg#--send=}" ;;
+    --terminal)   cmd_terminal ;;
     --hw)         cmd_hw ;;
     --all)        cmd_fmt; cmd_lint; cmd_test; cmd_docs; cmd_soc; cmd_build; cmd_bootloader; cmd_sim; cmd_console; cmd_sim_b0 ;;
     --help|-h)    usage; exit 0 ;;

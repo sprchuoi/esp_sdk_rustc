@@ -45,6 +45,17 @@ python3 -m esptool --chip esp32s3 -p /dev/ttyACM0 read-flash 0 0x1000000 backup.
 ./esp_sdk.sh --hw                 # --flash then --monitor
 ```
 
+For a direct interactive terminal in WSL:
+
+```bash
+./esp_sdk.sh --terminal
+```
+
+This runs `minicom` on `ESP_PORT`/`/dev/ttyACM0` at 115200 and captures the
+session to `target/serial.log`. Type commands directly; leave with `Ctrl-A X`.
+The firmware's line editor provides echo and backspace. If typing produces no
+echo, the board's RX path is not reaching UART0 — see the known issue below.
+
 `--monitor` toggles RTS/EN to reset the board, so the ROM and bootloader lines
 are included. The raw capture is always written to `target/serial.log`; set
 `ESP_NO_RESET=1` to listen without resetting, `ESP_MONITOR_BAUD` to change the
