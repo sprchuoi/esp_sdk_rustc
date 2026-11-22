@@ -330,8 +330,9 @@ The phase that turns "a firmware" into "an SDK you can port".
       unbound detection (`drivers/src/model.rs`).
 - [ ] **Driver core:** generated registry from Kconfig, probe order (buses before children),
       `ProbeError::Deferred` retry, typed device table, `devices` console command.
-- [x] **SoC seed:** `soc/esp32s3` implements `hal::Serial` (UART console via the esp-println backend)
-      and `hal::Delay`; the example's banner, console and loop go through the SDK HAL. `--soc` builds it.
+- [x] **SoC seed:** `soc/esp32s3` implements `hal::Serial` (interactive UART console: esp-println TX +
+      direct RX FIFO), `hal::Delay` and `hal::GpioPin`; the example uses them, toggles an LED and feeds
+      the hardware RWDT through the supervisor loop. `--soc` builds it.
 - [ ] **Bus model:** I2C (timeouts, recovery), SPI (CS, modes, DMA threshold), UART, 1-Wire traits
       and S3 implementations.
 - [x] **Simulation seed:** `examples/hello-kernel` builds for `xtensa-esp32s3-none-elf`, boots in

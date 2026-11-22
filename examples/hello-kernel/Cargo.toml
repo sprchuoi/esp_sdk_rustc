@@ -10,6 +10,7 @@ esp-bootloader-esp-idf = { version = "0.6.0", features = ["esp32s3"] }
 esp-backtrace = { version = "0.20.0", features = ["esp32s3", "panic-handler", "println"] }
 esp-sdk-kernel = { path = "../../kernel" }
 esp-sdk-esp32s3 = { path = "../../soc/esp32s3" }
+esp-sdk-hal = { path = "../../hal" }
 
 [profile.release]
 opt-level = "s"

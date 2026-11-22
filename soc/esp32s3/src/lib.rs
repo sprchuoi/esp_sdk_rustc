@@ -13,7 +13,14 @@
 
 use core::fmt;
 
+use esp_hal::gpio::OutputPin;
+use esp_hal::gpio::{Level, Output as HalOutput, OutputConfig};
 use esp_sdk_hal as hal;
+
+/// UART0 register block on the ESP32-S3.
+const UART0_BASE: usize = 0x6000_0000;
+/// `UART_STATUS_REG`: RX FIFO count is bits [9:0].
+const UART0_STATUS: usize = 0x1c;
 
 /// UART0 TX on the ESP32-S3-DevKitC-1.
 pub const UART0_TX_GPIO: u8 = 43;
@@ -33,6 +40,25 @@ impl Serial {
     pub const fn uart0() -> Self {
         Self
     }
+
+    /// Pop one received byte, if the UART0 RX FIFO has one.
+    ///
+    /// This reads the hardware FIFO directly: esp-hal's `Uart` initialisation is
+    /// not usable here yet (it stalls on the UART register-update handshake
+    /// under esp32sim), and the bootloader has already configured UART0 for its
+    /// console.
+    #[must_use]
+    pub fn read_byte(&self) -> Option<u8> {
+        // SAFETY: UART0 is a fixed MMIO block; reading STATUS then FIFO pops one
+        // received byte. Single reader (the console task) by contract.
+        unsafe {
+            let status = core::ptr::read_volatile((UART0_BASE + UART0_STATUS) as *const u32);
+            if status & 0x3ff == 0 {
+                return None;
+            }
+            Some(core::ptr::read_volatile(UART0_BASE as *const u32) as u8)
+        }
+    }
 }
 
 impl fmt::Write for Serial {
@@ -48,8 +74,50 @@ impl hal::Serial for Serial {
         Ok(())
     }
 
-    async fn read(&mut self, _buf: &mut [u8]) -> hal::Result<usize> {
-        Err(hal::Error::Unsupported)
+    async fn read(&mut self, buf: &mut [u8]) -> hal::Result<usize> {
+        let mut count = 0;
+        while count < buf.len() {
+            match self.read_byte() {
+                Some(byte) => {
+                    buf[count] = byte;
+                    count += 1;
+                }
+                None => break,
+            }
+        }
+        if count == 0 {
+            return Err(hal::Error::NotReady);
+        }
+        Ok(count)
+    }
+}
+
+/// A GPIO output implementing the SDK [`hal::GpioPin`] trait.
+pub struct Output<'d> {
+    pin: HalOutput<'d>,
+}
+
+impl<'d> Output<'d> {
+    /// Create an output, starting high or low.
+    pub fn new(pin: impl OutputPin + 'd, high: bool) -> Self {
+        let level = if high { Level::High } else { Level::Low };
+        Self {
+            pin: HalOutput::new(pin, level, OutputConfig::default()),
+        }
+    }
+}
+
+impl hal::GpioPin for Output<'_> {
+    fn set(&mut self, high: bool) {
+        if high {
+            self.pin.set_high();
+        } else {
+            self.pin.set_low();
+        }
+    }
+
+    fn get(&self) -> bool {
+        self.pin.is_set_high()
     }
 }
 

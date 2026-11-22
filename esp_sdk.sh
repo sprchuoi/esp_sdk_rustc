@@ -42,8 +42,9 @@ Device (Xtensa toolchain):
   --soc         build the ESP32-S3 platform crate
   --bootloader  build the B0 bootloader and target/sim/bootloader-b0.bin
   --sim         boot the example in esp32sim (asserts)
+  --console     drive the interactive console with scripted UART input
   --sim-b0      boot the B0 bootloader in esp32sim (asserts)
-  --all         --check --soc --build --bootloader --sim --sim-b0
+  --all         --check --soc --build --bootloader --sim --console --sim-b0
 
   --help        this text
 USAGE
@@ -190,6 +191,20 @@ cmd_sim() {
   echo "SIM OK: boot, scheduler, IPC and diagnostics verified"
 }
 
+cmd_console() {
+  [ -f "$OUT/app.bin" ] || cmd_build
+  local script
+  script="$(mktemp)"
+  printf '0.3 uart0 help\n0.8 uart0 version\n' > "$script"
+  log "driving the console over UART0"
+  run_sim --bootloader "$OUT/bootloader.bin" --ptable "$OUT/partition-table.bin" \
+    --app "$OUT/app.bin" --psram-mb 8 --script "$script"
+  rm -f "$script"
+  grep -q "commands:" "$TMP_LOG" || die "console help missing"
+  grep -q "hello-kernel 0.1.0" "$TMP_LOG" || die "console command did not run"
+  echo "CONSOLE OK: UART0 input, line echo and command dispatch"
+}
+
 cmd_sim_b0() {
   [ -f "$OUT/bootloader-b0.bin" ] || cmd_bootloader
   log "booting B0 bootloader in esp32sim"
@@ -215,8 +230,9 @@ for arg in "$@"; do
     --soc)        cmd_soc ;;
     --bootloader) cmd_bootloader ;;
     --sim)        cmd_sim ;;
+    --console)    cmd_console ;;
     --sim-b0)     cmd_sim_b0 ;;
-    --all)        cmd_fmt; cmd_lint; cmd_test; cmd_docs; cmd_soc; cmd_build; cmd_bootloader; cmd_sim; cmd_sim_b0 ;;
+    --all)        cmd_fmt; cmd_lint; cmd_test; cmd_docs; cmd_soc; cmd_build; cmd_bootloader; cmd_sim; cmd_console; cmd_sim_b0 ;;
     --help|-h)    usage; exit 0 ;;
     *)            echo "unknown command: $arg" >&2; usage; exit 2 ;;
   esac

@@ -14,7 +14,10 @@ use core::fmt::Write as _;
 use esp_backtrace as _;
 use esp_hal::main;
 use esp_hal::time::Instant;
-use esp_sdk_esp32s3::Serial;
+use esp_hal::rtc_cntl::{Rtc, RwdtStage};
+use esp_hal::time::Duration as HalDuration;
+use esp_sdk_esp32s3::{Output, Serial};
+use esp_sdk_hal::GpioPin;
 use esp_sdk_kernel::console::{Command, Console, ConsoleIo};
 use esp_sdk_kernel::ipc::MessageQueue;
 use esp_sdk_kernel::metrics::{Diagnostics, Health};
@@ -41,8 +44,16 @@ fn cmd_sched(_args: &[&str], out: &mut dyn ConsoleIo) {
 
 #[main]
 fn main() -> ! {
-    let _peripherals = esp_hal::init(esp_hal::Config::default());
+    let peripherals = esp_hal::init(esp_hal::Config::default());
     let mut serial = Serial::uart0();
+    let mut led = Output::new(peripherals.GPIO2, false);
+
+    // Hardware watchdog: the supervisor's deadline is software, the RWDT is the
+    // thing that actually resets a hung chip.
+    let mut rtc = Rtc::new(peripherals.RTC_TIMER);
+    rtc.rwdt
+        .set_timeout(RwdtStage::Stage0, HalDuration::from_millis(5_000));
+    rtc.rwdt.enable();
 
     let _ = writeln!(serial);
     let _ = writeln!(serial, "Sprchuoi ESP32 Boot");
@@ -64,6 +75,9 @@ fn main() -> ! {
 
     let mut supervisor = Supervisor::<4>::new(5_000_000, 3);
     supervisor.register(CTRL.raw(), 500_000, 0).unwrap();
+
+    let mut line = [0u8; 64];
+    let mut line_len = 0usize;
 
     let start = Instant::now();
 
@@ -90,12 +104,38 @@ fn main() -> ! {
         let now = now_us(start);
         scheduler.advance_to(now);
         supervisor.feed(now);
+        rtc.rwdt.feed();
+
+        // Interactive console over the SDK HAL: read what the UART has, echo it,
+        // and dispatch a line on Enter. No allocation.
+        while let Some(byte) = serial.read_byte() {
+            match byte {
+                b'\r' | b'\n' => {
+                    let _ = writeln!(serial);
+                    if line_len > 0 {
+                        if let Ok(text) = core::str::from_utf8(&line[..line_len]) {
+                            let _ = console.execute(text, &mut serial);
+                        }
+                        line_len = 0;
+                    }
+                }
+                0x20..=0x7e => {
+                    if line_len < line.len() {
+                        line[line_len] = byte;
+                        line_len += 1;
+                        let _ = write!(serial, "{}", byte as char);
+                    }
+                }
+                _ => {}
+            }
+        }
 
         while let Some(task) = scheduler.next_ready() {
             match task {
                 CTRL => {
                     let _ = writeln!(serial, "[ctrl] tick t={} ms", now / 1000);
                     supervisor.beat(CTRL.raw(), now);
+                    led.set(!led.get());
                     scheduler.sleep_for(CTRL, 250_000).unwrap();
                 }
                 SENSOR => {

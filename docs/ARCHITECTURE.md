@@ -334,7 +334,8 @@ Two profiles, chosen by the app, both using the same kernel hooks:
 ### 3.11 Supervisor
 
 *Implemented seed:* `kernel/supervisor.rs` — heartbeat registration and deadlines (one report per
-miss until re-armed), watchdog feed/re-arm, and a boot-attempt counter that enters safe mode.
+miss until re-armed), watchdog feed/re-arm, and a boot-attempt counter that enters safe mode. The
+example feeds the hardware RWDT (`Rtc::rwdt`) alongside the software supervisor.
 
 - RWDT fed by the `Ctrl` executor only, 10 s. A task that hogs the executor trips it.
 - Heartbeat registry: each task declares a max period; the monitor flags a hung service and resets
@@ -386,7 +387,8 @@ class (core/net/storage/input/crypto/diagnostics). The full boot pathway is in
 
 ### 3.16 Console
 
-`kernel/console.rs` is the command framework: a static `Console<N>` table, a no-allocation
+`kernel/console.rs` is the command framework, exercised interactively in esp32sim over UART0
+(`./esp_sdk.sh --console`): a static `Console<N>` table, a no-allocation
 whitespace parser (`MAX_ARGS`), a built-in `help`, and output through `core::fmt::Write` so the same
 commands run over UART, USB-Serial-JTAG or a `String` in tests. The transport and line editing are
 the SoC/example's job.

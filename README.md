@@ -138,7 +138,8 @@ before any cutover. Plan: [docs/MIGRATION.md](docs/MIGRATION.md).
 ```bash
 ./esp_sdk.sh --check        # rustfmt + clippy + 174 host tests + rustdoc
 ./esp_sdk.sh --nostd        # workspace builds for x86_64-unknown-none
-./esp_sdk.sh --soc          # build the ESP32-S3 platform layer
+./esp_sdk.sh --soc          # build the ESP32-S3 platform layer (Serial, Delay, GPIO)
+./esp_sdk.sh --console      # drive the interactive UART console in esp32sim
 ./esp_sdk.sh --build --sim  # example image, then boot it in esp32sim (asserted)
 ./esp_sdk.sh --sim-b0       # custom B0 bootloader in esp32sim (asserted)
 ./esp_sdk.sh --help         # everything else

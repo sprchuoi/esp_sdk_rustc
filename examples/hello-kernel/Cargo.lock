@@ -881,6 +881,7 @@ dependencies = [
  "esp-bootloader-esp-idf",
  "esp-hal",
  "esp-sdk-esp32s3",
+ "esp-sdk-hal",
  "esp-sdk-kernel",
 ]
 
