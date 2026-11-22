@@ -142,6 +142,21 @@ jobs:
       - if: steps.gate.outputs.enabled == 'true'
         run: cargo xtask ci --matrix all
 
+
+  # Emulator smoke test. Enable by setting the SIMULATION repository variable
+  # once `cargo xtask image` produces target/sim/{bootloader,partition-table,app}.bin.
+  simulation:
+    name: esp32sim boot smoke
+    if: ${{ vars.SIMULATION == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: ./scripts/sim-smoke.sh
+
   # Hardware-in-the-loop. Enabled by setting the repository variable
   # HIL_RUNNER to a self-hosted runner label (Phase 3+, needs a board).
   hil:

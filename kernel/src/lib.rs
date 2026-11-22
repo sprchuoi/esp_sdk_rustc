@@ -26,11 +26,13 @@
 
 pub mod config;
 pub mod crypto;
+pub mod ipc;
 pub mod log;
 pub mod metrics;
 pub mod power;
 pub mod sched;
 pub mod service;
+pub mod subsys;
 pub mod sync;
 pub mod time;
 

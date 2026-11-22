@@ -1,6 +1,6 @@
 # esp_sdk_rustc — Build Plan
 
-**Status:** draft v0.8 · 2026-09-21
+**Status:** draft v0.9 · 2026-09-21
 **Goal:** a Rust **SDK** for ESP32 smart-home nodes that ships an OS — a tiny RTOS with the scheduler,
 drivers, network and device framework — portable across chips and boards the way a Linux kernel is:
 configuration-driven, hardware described in data, drivers bound by compatible string. Customers
@@ -147,6 +147,9 @@ Two documents carry the detail:
 | **Metrics + diagnostics** | `kernel/metrics` | 1 | counters, memory low-water/health, deduplicated faults, crash record, text dump |
 | **Crypto primitives** | `kernel/crypto` | 3 | SHA-256 and HMAC-SHA256 pinned by NIST/RFC vectors, constant-time compare |
 | **Power policy** | `kernel/power` | 6 | Mains/Battery profiles, sleep thresholds, wake sources, report schedule |
+| **IPC** | `kernel/ipc` | 1 | message queue, mailbox, pipe, semaphore with backpressure/high-water |
+| **Initcalls + subsystems** | `kernel/subsys` | 1 | Linux-style levels, stable order, subsystem classes |
+| **Network service** | `net/` | 4 | link/lease/retry state machine, IPv4 parsing, deadlines |
 | **Driver binding** | `drivers/model` | 2 | `DeviceNode`/`DriverDesc`, compatible matching, pre-order bind, unbound detection |
 | **AT24 EEPROM driver** | `drivers/eeprom` | 3 | page-aware writes, `tWR` wait, 1/2-byte addressing, host tests |
 | **Boot contract** | `boot/` | 5 | partition validation, otadata CRC/state/selection, app descriptor |
@@ -269,6 +272,10 @@ No product code. Establish what is actually true about the hardware and the tool
       (register-level sleep sequences stay in `soc/`).
 - [x] **Crypto seed:** SHA-256 + HMAC-SHA256 with NIST/RFC 4231 vectors and constant-time compare;
       AEAD, Ed25519 and hardware backends remain Phase 3/5.
+- [x] **IPC:** bounded message queue, single-slot mailbox, byte pipe, counting semaphore; no
+      blocking waits (they need the executor's waker + arch critical section).
+- [x] **Initcalls and subsystems:** Linux-style levels (`early`…`late`), stable ordering,
+      subsystem class registry ([KERNEL.md](KERNEL.md)).
 - [ ] **Scheduler integration:** per-class executor with its own stack (8 KiB), `spawn`/
       `spawn_periodic`, `yield`, `suspend`/`resume`, starvation aging, `sched` stats.
 - [ ] **Timers:** static deadline heap (32 entries), tickless arm/disarm, period-overrun detection.

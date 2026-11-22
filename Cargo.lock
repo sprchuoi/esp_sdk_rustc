@@ -20,3 +20,7 @@ version = "0.1.0"
 [[package]]
 name = "esp-sdk-kernel"
 version = "0.1.0"
+
+[[package]]
+name = "esp-sdk-net"
+version = "0.1.0"

@@ -11,10 +11,11 @@ first real consumer is the migration of [`smart_home_idf`](https://github.com/sp
 from ESP-IDF/C++ onto this SDK.
 
 **Status: Phase 2 seed.** `hal/` has the trait set plus host mocks; `kernel/` has the scheduler,
-time, `Signal`, log ring, service manager, SHA-256/HMAC, power policy and diagnostics (metrics,
-memory low-water, faults, crash dump); `drivers/` has the binding model and an AT24 EEPROM driver;
-`boot/` has partition validation, otadata selection and app-descriptor parsing —
-**120 host tests**, clean `no_std` build for a bare-metal target. The rest is documentation and the
+time, `Signal`, IPC queues/pipes/semaphores, initcall levels, service manager, SHA-256/HMAC, power
+policy and diagnostics; `drivers/` has the binding model and an AT24 EEPROM driver; `net/` has the
+link/lease network service; `boot/` has partition validation, otadata selection and app-descriptor
+parsing — **143 host tests**, clean `no_std` build for a bare-metal target, and `esp32sim` vendored
+as a submodule for emulator boot tests. The rest is documentation and the
 phase plan:
 [PLAN](docs/PLAN.md) · [ARCHITECTURE](docs/ARCHITECTURE.md) · [CONFIGURATION](docs/CONFIGURATION.md) ·
 [DRIVERS](docs/DRIVERS.md) · [BOOT](docs/BOOT.md) · [CI](docs/CI.md) · [SDK contract](docs/SDK.md) ·
@@ -98,6 +99,7 @@ A new **board** is a `.dts` + defconfig. A new **driver** is one module + one Kc
 
 ```
 apps/            sensor-node · actuator-node          (examples / reference products)
+net/             link/lease network service · IPv4 types
 boot/            partitions · otadata · selection · app descriptor
 subsys/          provisioning · mqtt + HA discovery · ota · storage · crypto
 drivers/         bus · eeprom · mtd · net · gpio · sensor
@@ -133,7 +135,7 @@ before any cutover. Plan: [docs/MIGRATION.md](docs/MIGRATION.md).
 ## Development
 
 ```bash
-cargo test --workspace --all-features          # 120 host tests (HAL, kernel, drivers, boot)
+cargo test --workspace --all-features          # 143 host tests (HAL, kernel, drivers, net, boot)
 cargo clippy --workspace --all-targets --all-features -- -D warnings
 cargo fmt --all -- --check
 RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps --all-features
@@ -153,6 +155,7 @@ Matter stack, cloud backend, voice assistant, a new LLVM backend, a new WiFi PHY
 - [Architecture](docs/ARCHITECTURE.md) — scheduler, interrupts, DMA, crypto, sleep, memory map
 - [Configuration](docs/CONFIGURATION.md) — Kconfig, board DTS, codegen, porting, CI matrix
 - [Drivers](docs/DRIVERS.md) — driver model, buses, EEPROM, MTD/flash, NET
+- [Kernel](docs/KERNEL.md) — boot pathway, initcall levels, IPC, net service, esp32sim
 - [Boot](docs/BOOT.md) — partition table, otadata, rollback flow, app descriptor
 - [CI](docs/CI.md) — pipeline, test layers, HIL, release gates
 - [SDK contract](docs/SDK.md) — crates, features, versioning, release policy

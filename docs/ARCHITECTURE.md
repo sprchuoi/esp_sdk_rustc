@@ -1,6 +1,6 @@
 # Architecture
 
-**Status:** draft v0.8 · 2026-09-21
+**Status:** draft v0.9 · 2026-09-21
 Companion to [PLAN.md](PLAN.md). This document is the design the phases implement.
 
 ---
@@ -359,6 +359,29 @@ the node degraded.
 
 ---
 
+### 3.14 IPC
+
+`kernel/src/ipc.rs`: bounded `MessageQueue<T, N>` (with `push_overwrite` and a high-water mark),
+single-slot `Mailbox`, byte `Pipe`, and an atomic counting `Semaphore`. No blocking `wait` — that
+needs a waker plus an arch critical section, and lives in the executor layer. The primitives take
+`&mut self`, which is what keeps the kernel `forbid(unsafe_code)`.
+
+### 3.15 Initcalls and subsystems
+
+`kernel/src/subsys.rs` reproduces Linux's initcall levels (`early`…`late`) with a static table:
+components register a name and level, and the boot path asks for the order. `SubsystemTable` adds a
+class (core/net/storage/input/crypto/diagnostics). The full boot pathway is in
+[KERNEL.md](KERNEL.md).
+
+### 3.16 Network service
+
+`net/` owns the service view of connectivity: `Down → RequestingLease → Ready{address, expiry} →
+Degraded{retry_at}`, with `tick()`/`next_deadline()` driving lease expiry and retries and
+`Ipv4Addr` parsing/formatting without allocation. The packet path (smoltcp over `NetDevice`) plugs in
+behind it.
+
+---
+
 ## 4. Platform abstraction (L1)
 
 ```rust
@@ -374,6 +397,11 @@ pub trait Flash { fn capacity(&self) -> u64; fn erase_size(&self) -> u32;
                   async fn erase(&mut self, offset: u64, len: u64) -> Result<()>;
                   async fn write(&mut self, offset: u64, data: &[u8]) -> Result<()>; }
 pub trait Rng { fn fill(&mut self, buf: &mut [u8]); }
+pub trait NetDevice { fn name(&self) -> &'static str; fn mtu(&self) -> usize;
+                      async fn up(&mut self) -> Result<()>;
+                      fn link(&self) -> hal::LinkState; fn stats(&self) -> hal::NetStats;
+                      async fn transmit(&mut self, frame: &[u8]) -> Result<()>;
+                      async fn receive(&mut self, buf: &mut [u8]) -> Result<usize>; }
 ```
 
 *Implemented:* `hal/` (traits, `Error`, and the `mock` module). Device-class traits — `Eeprom`,

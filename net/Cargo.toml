@@ -1,0 +1,12 @@
+[package]
+name = "esp-sdk-net"
+description = "Network service state machine for the esp-sdk (link, DHCP lease, readiness)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[lints]
+workspace = true
