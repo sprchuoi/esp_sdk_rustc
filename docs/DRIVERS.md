@@ -1,9 +1,15 @@
 # Driver Model and Storage/Network Subsystems
 
-**Status:** draft v0.1 · 2026-09-21
+**Status:** draft v0.2 · 2026-09-21
 How a driver is written, bound, powered and tested — plus the three subsystems this phase of the
 SDK owes: **EEPROM**, **FLASH (MTD)** and **NET (WiFi)**. Companion to
 [CONFIGURATION.md](CONFIGURATION.md).
+
+**Implemented so far:**
+
+- driver binding: `drivers/src/model.rs` (`DeviceNode`, `DriverDesc`, `bind`, unbound detection);
+- AT24 I2C EEPROM: `drivers/src/eeprom/at24.rs` (page-aware writes, `tWR` wait, 1/2-byte addressing);
+- mocks for every bus it needs: `hal/src/mock.rs`.
 
 ---
 
@@ -102,9 +108,9 @@ pub trait Eeprom: Send {
 }
 ```
 
-**AT24 (I2C)** — `atmel,at24c256`:
+**AT24 (I2C)** — `atmel,at24c256` *(implemented)*:
 
-- Address width follows capacity: ≤ 2 KiB uses one address byte, larger parts two. Derived from
+- Address width follows capacity: ≤ 256 bytes uses one address byte, larger parts two. Derived from
   `size`, never hard-coded.
 - Writes are split at page boundaries internally; a caller may pass any range.
 - The write cycle (`tWR`, 5 ms typical) is honoured by `await`, not a spin loop. A write returns only

@@ -1,6 +1,6 @@
 # Architecture
 
-**Status:** draft v0.6 · 2026-09-21
+**Status:** draft v0.7 · 2026-09-21
 Companion to [PLAN.md](PLAN.md). This document is the design the phases implement.
 
 ---
@@ -71,6 +71,9 @@ Key points:
 - **`main` returns `!`** and hands control to the scheduler. There is no "super loop".
 - **Crash record** is written before reset in the panic handler and read back on the next boot;
   three consecutive abnormal boots enter safe mode (no app tasks, provisioning AP only).
+- **App-side boot contract (implemented, `boot/`):** partition validation, otadata
+  layout/CRC/state/selection, and `esp_app_desc_t` parsing. Details and the rollback flow are in
+  [BOOT.md](BOOT.md).
 
 ### 2.1 Bootloader: buy or build
 
@@ -346,8 +349,12 @@ pub trait Rng { fn fill(&mut self, buf: &mut [u8]); }
 `Mtd`, `NetDevice`, DMA buffers — build on these in `drivers/`; full contracts are in
 [DRIVERS.md](DRIVERS.md).
 
-- `hal::mock` provides always-ready I2C register devices, SPI loopback, serial capture, GPIO, NOR
-  flash with erase-before-write, and a recording delay — enough to test driver logic without a board.
+- `hal::mock` provides always-ready I2C register devices (1- or 2-byte addressing), SPI loopback,
+  serial capture, GPIO, NOR flash with erase-before-write, and a recording delay — enough to test
+  driver logic without a board.
+- **Driver binding (implemented, `drivers/model`):** `DeviceNode` mirrors the board tree,
+  `DriverDesc` declares compatibles, `bind()` resolves nodes in pre-order. Probing stays typed and
+  board-owned; there is no type-erased registry and no allocation.
 - Chip selection is a compile-time feature: `chip-esp32s3`, `chip-esp32c6`, `chip-host`.
 - Pin maps live in `boards/*`, never in drivers; apps name resources (`board.relay[0]`), not GPIOs.
 - The host arch implements every trait with mocks so kernel/services/manifest tests run under

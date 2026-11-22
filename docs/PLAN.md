@@ -1,6 +1,6 @@
 # esp_sdk_rustc — Build Plan
 
-**Status:** draft v0.6 · 2026-09-21
+**Status:** draft v0.7 · 2026-09-21
 **Goal:** a Rust **SDK** for ESP32 smart-home nodes that ships an OS — a tiny RTOS with the scheduler,
 drivers, network and device framework — portable across chips and boards the way a Linux kernel is:
 configuration-driven, hardware described in data, drivers bound by compatible string. Customers
@@ -143,6 +143,9 @@ Two documents carry the detail:
 | **CI + host unit tests** | `.github/workflows/ci.yml` | 0 | fmt, clippy, tests, rustdoc, MSRV and a no_std target build on every push; device jobs auto-activate |
 | **HAL traits + host mocks** | `hal/` | 1 | I2C/SPI/serial/GPIO/flash mocks drive driver logic in host tests |
 | **Kernel primitives** | `kernel/time`, `sync`, `log`, `config` | 1 | `Instant` arithmetic, `Signal`, level-filtered log ring, limits module |
+| **Driver binding** | `drivers/model` | 2 | `DeviceNode`/`DriverDesc`, compatible matching, pre-order bind, unbound detection |
+| **AT24 EEPROM driver** | `drivers/eeprom` | 3 | page-aware writes, `tWR` wait, 1/2-byte addressing, host tests |
+| **Boot contract** | `boot/` | 5 | partition validation, otadata CRC/state/selection, app descriptor |
 | Scheduler (priority classes, tickless timers, accounting) | `kernel/sched` | 1 | run order, deadlines and overruns proven by deterministic host tests + 24 h on target |
 | Interrupt model (static IRQ table, ISR→task, latency) | `kernel/irq` + arch | 1 | measured ISR entry/exit and wake latency in `docs/latency.md` |
 | Logging (defmt, RAM ring, flash ring, crash dump) | `kernel/log` | 1 | crash log survives reset and is readable over console + MQTT |
@@ -286,9 +289,10 @@ The phase that turns "a firmware" into "an SDK you can port".
 - [ ] **Board DTS pipeline:** `cpp` → `dtc` → `.dtb` → build-time `fdt` parse → `BoardIR` → static
       tables; `devkitc1.dts` + `devkitc1_sensor_defconfig`; build errors for unknown `compatible`,
       overlapping partitions, duplicate I2C addresses, pin conflicts.
-- [ ] **Driver core:** `DriverFactory`, generated registry, compatible matching (specific first),
-      probe order (buses before children), `ProbeError::Deferred` retry, typed device table,
-      `devices` console command.
+- [x] **Driver binding seed:** `DeviceNode`/`DriverDesc`, `compatible` matching, pre-order bind,
+      unbound detection (`drivers/src/model.rs`).
+- [ ] **Driver core:** generated registry from Kconfig, probe order (buses before children),
+      `ProbeError::Deferred` retry, typed device table, `devices` console command.
 - [ ] **Bus model:** I2C (timeouts, recovery), SPI (CS, modes, DMA threshold), UART, 1-Wire traits
       and S3 implementations.
 - [ ] **CI matrix:** defconfigs + `allyesconfig` + `allnoconfig`, per-config size budget, strict
@@ -302,8 +306,9 @@ covered by snapshot tests.
 
 ### Phase 3 — Hardware services: storage, DMA, crypto, sensors (4 weeks)
 
-- [ ] **EEPROM:** `Eeprom` trait, AT24 (I2C) and 25LC (SPI) drivers, page-boundary writes, `tWR`
-      as `await`, ACK polling, WP pin, read-back verify; `EepromKv` backend.
+- [x] **EEPROM:** `Eeprom` trait + AT24 driver — page-boundary writes, `tWR` as an `await`,
+      1/2-byte addressing, typed errors (`drivers/src/eeprom/`).
+- [ ] **EEPROM continued:** 25LC (SPI) part, ACK polling, WP pin, read-back verify, `EepromKv`.
 - [ ] **MTD/flash:** `Mtd` trait, on-chip SPI NOR driver, partitions from the board file,
       range-checked `MtdPartition`, erase/write rules, wear counters, `embedded-storage` adapter.
 - [ ] **Storage stack:** KV on flash (log-structured, atomic commit, compaction, namespaces),
@@ -339,6 +344,8 @@ restart, and the same `subsys/net` code runs over the W5500 netdev.
 
 ### Phase 5 — Smarthome framework, discovery and OTA (3 weeks)
 
+- [x] **Boot contract:** partition table validation, otadata layout/CRC/state/selection, app
+      descriptor parsing (`boot/`, [BOOT.md](BOOT.md)).
 - [ ] Capability model: `Sensor`, `BinarySensor`, `Switch`, `Light`, `Cover`, `Number`, `Diagnostic`.
 - [ ] Declarative manifest → topics, retained HA discovery payloads, availability (LWT), command
       routing, state debounce/rate-limit.
@@ -453,6 +460,7 @@ passes.
 | NET | host tests vs Mosquitto (Docker) + HIL soak, two netdevs | Phase 4 |
 | Smarthome | discovery payload snapshots + real Home Assistant | Phase 5 |
 | OTA | bad signature, corrupted image, power-cut mid-write, rollback | Phase 5, each release |
+| Boot contract | otadata/partition/select/descriptor tests; CRC vectors from `otatool.py` | every PR |
 | Sleep/power | current trace per state, wake latency, 30-day battery simulation | Phase 8 |
 | Portability | CI build matrix S3 × C6, both flashed before release | every release |
 

@@ -1,0 +1,18 @@
+[package]
+name = "esp-sdk-drivers"
+description = "Driver model and device drivers for the esp-sdk"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+esp-sdk-hal = { path = "../hal" }
+
+[dev-dependencies]
+esp-sdk-hal = { path = "../hal", features = ["mock"] }
+
+[lints]
+workspace = true

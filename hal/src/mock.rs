@@ -24,12 +24,14 @@ pub fn block_on<F: Future>(future: F) -> F::Output {
     panic!("mock future stayed pending");
 }
 
-const MAX_DEVICES: usize = 4;
-const REGISTER_SPACE: usize = 256;
+const MAX_DEVICES: usize = 2;
+const REGISTER_SPACE: usize = 4096;
 
 struct MockDevice {
     addr: u8,
-    pointer: u8,
+    /// Address bytes sent before data: 1 for a register device, 2 for an EEPROM.
+    address_bytes: u8,
+    pointer: u16,
     memory: [u8; REGISTER_SPACE],
 }
 
@@ -57,13 +59,29 @@ impl MockI2c {
         }
     }
 
-    /// Attach a device at `addr`, returning the bus for chaining.
+    /// Attach a register device at `addr` (one address byte).
+    #[must_use]
+    pub fn with_device(self, addr: u8) -> Self {
+        self.with_addressed_device(addr, 1)
+    }
+
+    /// Attach a 2-byte-addressed EEPROM at `addr`.
+    #[must_use]
+    pub fn with_eeprom(self, addr: u8) -> Self {
+        self.with_addressed_device(addr, 2)
+    }
+
+    /// Attach a device whose transfers start with `address_bytes` pointer bytes.
     ///
     /// # Panics
-    /// Panics if the four mock device slots are already used, which is a test
-    /// setup error, not a runtime condition.
+    /// Panics if the mock device table is full or `address_bytes` is not 1 or 2;
+    /// both are test setup errors, not runtime conditions.
     #[must_use]
-    pub fn with_device(mut self, addr: u8) -> Self {
+    pub fn with_addressed_device(mut self, addr: u8, address_bytes: u8) -> Self {
+        assert!(
+            address_bytes == 1 || address_bytes == 2,
+            "address width must be 1 or 2"
+        );
         let slot = self
             .devices
             .iter_mut()
@@ -71,6 +89,7 @@ impl MockI2c {
             .expect("mock I2C device table full");
         *slot = Some(MockDevice {
             addr,
+            address_bytes,
             pointer: 0,
             memory: [0; REGISTER_SPACE],
         });
@@ -99,14 +118,20 @@ impl MockI2c {
 impl I2cBus for MockI2c {
     async fn write(&mut self, addr: u8, bytes: &[u8]) -> Result<()> {
         let device = self.device_mut(addr)?;
-        let Some((&register, data)) = bytes.split_first() else {
-            return Ok(());
-        };
-        device.pointer = register;
+        let width = usize::from(device.address_bytes);
+        if bytes.len() < width {
+            return Err(Error::InvalidArgument);
+        }
+        let (pointer_bytes, data) = bytes.split_at(width);
+        let mut pointer = 0u16;
+        for &byte in pointer_bytes {
+            pointer = (pointer << 8) | u16::from(byte);
+        }
+        device.pointer = pointer;
         for byte in data {
-            let index = usize::from(device.pointer);
+            let index = usize::from(device.pointer) % REGISTER_SPACE;
             device.memory[index] = *byte;
-            device.pointer = device.pointer.wrapping_add(1);
+            device.pointer = device.pointer.wrapping_add(1) % REGISTER_SPACE as u16;
         }
         Ok(())
     }
@@ -114,9 +139,9 @@ impl I2cBus for MockI2c {
     async fn read(&mut self, addr: u8, buf: &mut [u8]) -> Result<()> {
         let device = self.device_mut(addr)?;
         for slot in buf {
-            let index = usize::from(device.pointer);
+            let index = usize::from(device.pointer) % REGISTER_SPACE;
             *slot = device.memory[index];
-            device.pointer = device.pointer.wrapping_add(1);
+            device.pointer = device.pointer.wrapping_add(1) % REGISTER_SPACE as u16;
         }
         Ok(())
     }

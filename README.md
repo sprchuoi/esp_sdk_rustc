@@ -10,11 +10,13 @@ Customers depend on it to build their own products. Everything under `apps/` her
 first real consumer is the migration of [`smart_home_idf`](https://github.com/sprchuoi/smart_home_idf)
 from ESP-IDF/C++ onto this SDK.
 
-**Status: Phase 1 seed.** `hal/` has the trait set plus host mocks; `kernel/` has the scheduler
-core, monotonic time, `Signal`, and a level-filtered log ring — 36 host tests, clean `no_std` build
-for a bare-metal target. The rest is documentation and the phase plan:
+**Status: Phase 2 seed.** `hal/` has the trait set plus host mocks; `kernel/` has the scheduler,
+monotonic time, `Signal` and a level-filtered log ring; `drivers/` has the binding model and an AT24
+EEPROM driver; `boot/` has partition validation, otadata selection and app-descriptor parsing —
+**82 host tests**, clean `no_std` build for a bare-metal target. The rest is documentation and the
+phase plan:
 [PLAN](docs/PLAN.md) · [ARCHITECTURE](docs/ARCHITECTURE.md) · [CONFIGURATION](docs/CONFIGURATION.md) ·
-[DRIVERS](docs/DRIVERS.md) · [CI](docs/CI.md) · [SDK contract](docs/SDK.md) ·
+[DRIVERS](docs/DRIVERS.md) · [BOOT](docs/BOOT.md) · [CI](docs/CI.md) · [SDK contract](docs/SDK.md) ·
 [MIGRATION](docs/MIGRATION.md).
 
 ## Using the SDK
@@ -95,6 +97,7 @@ A new **board** is a `.dts` + defconfig. A new **driver** is one module + one Kc
 
 ```
 apps/            sensor-node · actuator-node          (examples / reference products)
+boot/            partitions · otadata · selection · app descriptor
 subsys/          provisioning · mqtt + HA discovery · ota · storage · crypto
 drivers/         bus · eeprom · mtd · net · gpio · sensor
 kernel/          scheduler · interrupts · time · sync · driver core · kv · log · power
@@ -129,7 +132,7 @@ before any cutover. Plan: [docs/MIGRATION.md](docs/MIGRATION.md).
 ## Development
 
 ```bash
-cargo test --workspace --all-features          # 36 host tests (HAL mocks + kernel)
+cargo test --workspace --all-features          # 82 host tests (HAL, kernel, drivers, boot)
 cargo clippy --workspace --all-targets --all-features -- -D warnings
 cargo fmt --all -- --check
 RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps --all-features
@@ -149,6 +152,7 @@ Matter stack, cloud backend, voice assistant, a new LLVM backend, a new WiFi PHY
 - [Architecture](docs/ARCHITECTURE.md) — scheduler, interrupts, DMA, crypto, sleep, memory map
 - [Configuration](docs/CONFIGURATION.md) — Kconfig, board DTS, codegen, porting, CI matrix
 - [Drivers](docs/DRIVERS.md) — driver model, buses, EEPROM, MTD/flash, NET
+- [Boot](docs/BOOT.md) — partition table, otadata, rollback flow, app descriptor
 - [CI](docs/CI.md) — pipeline, test layers, HIL, release gates
 - [SDK contract](docs/SDK.md) — crates, features, versioning, release policy
 - [Migration](docs/MIGRATION.md) — `smart_home_idf` parity and cutover

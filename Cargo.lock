@@ -3,6 +3,17 @@
 version = 4
 
 [[package]]
+name = "esp-sdk-boot"
+version = "0.1.0"
+
+[[package]]
+name = "esp-sdk-drivers"
+version = "0.1.0"
+dependencies = [
+ "esp-sdk-hal",
+]
+
+[[package]]
 name = "esp-sdk-hal"
 version = "0.1.0"
 

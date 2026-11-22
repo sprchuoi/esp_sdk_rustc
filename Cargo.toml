@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["hal", "kernel"]
+members = ["boot", "drivers", "hal", "kernel"]
 
 [workspace.package]
 version = "0.1.0"

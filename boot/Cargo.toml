@@ -1,0 +1,12 @@
+[package]
+name = "esp-sdk-boot"
+description = "Boot contract: partitions, otadata selection and app image descriptor"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[lints]
+workspace = true
