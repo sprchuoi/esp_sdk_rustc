@@ -562,7 +562,7 @@ of the offending symbols. Target: ≤ 450 KiB binary for the sensor node without
 ## 8. Testing hooks built into the design
 
 - **Host arch** (`chip-host`): deterministic clock, scripted I2C/SPI/serial/GPIO/flash mocks
-  (`hal::mock`), in-memory KV — 191 host tests today, run in milliseconds.
+  (`hal::mock`), in-memory KV — 194 host tests today, run in milliseconds.
 - **Scheduler tests:** deterministic single-threaded harness that pumps the executor and asserts run
   order, deadlines, overrun events and the starvation guard.
 - **Interrupt latency test:** GPIO toggle at ISR entry/exit, measured on a scope; recorded per release.

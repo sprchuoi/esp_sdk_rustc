@@ -9,7 +9,7 @@ Updated after the first real-hardware run (ESP32-S3 rev0.2, 16 MB flash, 8 MB PS
 | **Console line editing** | done | `LineEditor`, 4 host tests, sim `--console` | — |
 | **Console commands** | **done** | `help/version/status/tasks/sched/mem/log/reset/selftest/rwdt-starve`; `tasks`/`log` use runtime snapshots; verified in sim and on hardware | `sched` is still a static class summary, not the full table |
 | **UART RX** | **done** | `--send=$'tasks\nlog\n'` returns table/log on hardware; CRLF rendering fixed; `--terminal` available | — |
-| **Scheduler integration** | partial | classes, round-robin, suspend/resume, aging, stats all host-tested | executor (8 KiB per class), `spawn`/`spawn_periodic`, `yield` |
+| **Scheduler integration** | partial | `exec::Executor` policy (slots, spawn/spawn_periodic, yield, class order, accounting) host-tested; 194 tests | 8 KiB per-class stacks, context switch, futures/waker |
 | **Timers** | mostly done | deadline heap (32), tickless `hal::Timer` + TIMG one-shot, overrun accounting | hardware periodic wake integration (executor) |
 | **Accounting** | partial | `begin_run`/`end_run`, wakes, max, overruns, `write_stats` | CCOUNT/1 kHz sampler; max latency; target rendering |
 | **Interrupts** | partial | IRQ table/priorities/ISR contract host-tested; **TIMG0 ISR fires and returns on hardware** (5–16 µs observed in main) | ISR→task wake (currently main polling), bounded critical sections, true vector-entry latency |

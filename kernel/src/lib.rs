@@ -29,6 +29,7 @@ pub mod config;
 pub mod console;
 pub mod crypto;
 pub mod event;
+pub mod exec;
 pub mod ipc;
 pub mod irq;
 pub mod log;

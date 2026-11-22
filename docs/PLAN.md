@@ -301,7 +301,8 @@ No product code. Establish what is actually true about the hardware and the tool
 - [x] **Latency method:** targets, procedure and results table in [latency.md](latency.md).
 - [x] **Tickless hardware arm/disarm:** `hal::Timer` (now/arm/disarm) + mock; `soc/esp32s3` arms a
       TIMG one-shot from a deadline; the example exercises it at boot (`timer: boot_us=…`).
-- [ ] **Executor:** per-class executor with its own 8 KiB stack, `spawn`/`spawn_periodic`, `yield`.
+- [x] **Executor policy skeleton:** `kernel/exec.rs` — static slots, `spawn`, `spawn_periodic`, cooperative `yield`, class order, accounting; 3 tests.
+- [ ] **Executor stacks:** per-class 8 KiB stack, context switch, waker/polled futures.
 - [ ] **CCOUNT/mcycle sampling at 1 kHz** for per-task CPU time (host accounting uses caller stamps).
 - [x] **ISR path proven on hardware:** TIMG0 one-shot handler fires and returns; main observes it
       5–16 µs later (`ESP_FEATURES=irq-selftest`, log in [HARDWARE.md](HARDWARE.md)).

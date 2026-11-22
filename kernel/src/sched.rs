@@ -29,6 +29,8 @@ pub enum SchedError {
     NotRunning,
     /// A periodic arm used a zero period.
     InvalidPeriod,
+    /// No free task slot in the executor.
+    TaskSlotsFull,
 }
 
 /// Per-task scheduling accounting.
@@ -120,7 +122,7 @@ impl TaskId {
         self.0
     }
 
-    const fn index(self) -> usize {
+    pub(crate) const fn index(self) -> usize {
         self.0 as usize
     }
 }
