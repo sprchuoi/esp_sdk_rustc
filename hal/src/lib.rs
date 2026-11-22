@@ -15,6 +15,9 @@
 //!
 //! Implementations live in `soc/` (silicon) or [`mock`] (host tests).
 //!
+//! Each peripheral lives in its own module and is re-exported at the crate root,
+//! so drivers use `esp_sdk_hal::I2cBus` regardless of file layout.
+//!
 //! # Contract for implementors
 //!
 //! - All methods are non-blocking in the async sense: they return a future that
@@ -25,307 +28,25 @@
 //! - Addresses passed to buses are already validated by the driver (7-bit for
 //!   I2C); an implementation may still reject them with [`Error::InvalidAddress`].
 
-/// Result type used across the HAL.
-pub type Result<T> = core::result::Result<T, Error>;
+pub mod delay;
+pub mod error;
+pub mod flash;
+pub mod gpio;
+pub mod i2c;
+pub mod net;
+pub mod rng;
+pub mod serial;
+pub mod spi;
 
-/// Errors a peripheral implementation may report.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[non_exhaustive]
-pub enum Error {
-    /// The bus reported an error (NACK, framing, CRC, ...).
-    Bus,
-    /// The operation did not complete before its deadline.
-    Timeout,
-    /// The addressed device does not exist on this bus.
-    InvalidAddress,
-    /// An argument was out of range for the peripheral.
-    InvalidArgument,
-    /// The peripheral cannot service the request yet (busy, not initialised).
-    NotReady,
-    /// A flash write hit a non-erased region.
-    NotErased,
-    /// The requested range is outside the device.
-    OutOfRange,
-    /// The peripheral exists in the SoC but this build does not support it.
-    Unsupported,
-}
-
-/// Blocking, short delays. Implementations must not sleep the executor.
-pub trait Delay {
-    /// Spin or busy-wait for `us` microseconds.
-    fn delay_us(&mut self, us: u32);
-
-    /// Delay for `ms` milliseconds.
-    fn delay_ms(&mut self, ms: u32) {
-        self.delay_us(ms.saturating_mul(1_000));
-    }
-}
-
-/// A digital output/input pin.
-pub trait GpioPin {
-    /// Drive the pin high or low.
-    fn set(&mut self, high: bool);
-
-    /// Read the pin level.
-    fn get(&self) -> bool;
-}
-
-/// Asynchronous I2C controller.
-pub trait I2cBus {
-    /// Write `bytes` to the device at `addr`.
-    async fn write(&mut self, addr: u8, bytes: &[u8]) -> Result<()>;
-
-    /// Read into `buf` from the device at `addr`.
-    async fn read(&mut self, addr: u8, buf: &mut [u8]) -> Result<()>;
-}
-
-/// Asynchronous SPI controller. Chip select is owned by the device driver.
-pub trait SpiBus {
-    /// Full-duplex transfer: `tx` is clocked out, `rx` is filled.
-    ///
-    /// `tx` and `rx` must have the same length; implementations return
-    /// [`Error::InvalidArgument`] otherwise.
-    async fn transfer(&mut self, tx: &[u8], rx: &mut [u8]) -> Result<()>;
-}
-
-/// Asynchronous byte-oriented serial port (console, log sink).
-pub trait Serial {
-    /// Write all bytes.
-    async fn write(&mut self, bytes: &[u8]) -> Result<()>;
-
-    /// Read at least one byte, returning how many were read.
-    async fn read(&mut self, buf: &mut [u8]) -> Result<usize>;
-}
-
-/// Byte-addressable NOR flash.
-///
-/// Writes require a prior erase of the affected region; implementations must
-/// return [`Error::NotErased`] rather than silently ANDing bits.
-pub trait Flash {
-    /// Total capacity in bytes.
-    fn capacity(&self) -> u64;
-
-    /// Erase granularity in bytes (4 KiB on SPI NOR).
-    fn erase_size(&self) -> u32;
-
-    /// Read into `buf`.
-    async fn read(&mut self, offset: u64, buf: &mut [u8]) -> Result<()>;
-
-    /// Erase `len` bytes starting at `offset`. `offset` and `len` must be
-    /// multiples of [`Flash::erase_size`].
-    async fn erase(&mut self, offset: u64, len: u64) -> Result<()>;
-
-    /// Program `data` at `offset`.
-    async fn write(&mut self, offset: u64, data: &[u8]) -> Result<()>;
-}
-
-/// A 48-bit MAC address.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
-pub struct MacAddr([u8; 6]);
-
-impl MacAddr {
-    /// Construct from bytes.
-    #[must_use]
-    pub const fn new(bytes: [u8; 6]) -> Self {
-        Self(bytes)
-    }
-
-    /// The raw bytes.
-    #[must_use]
-    pub const fn as_bytes(self) -> [u8; 6] {
-        self.0
-    }
-
-    /// Whether the group bit is set.
-    #[must_use]
-    pub const fn is_multicast(self) -> bool {
-        self.0[0] & 1 == 1
-    }
-}
-
-/// Link state of a network device.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum LinkState {
-    /// No carrier.
-    Down,
-    /// Carrier present.
-    Up,
-}
-
-/// Packet and error counters for a network device.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct NetStats {
-    /// Frames received.
-    pub rx_packets: u32,
-    /// Frames transmitted.
-    pub tx_packets: u32,
-    /// Bytes received.
-    pub rx_bytes: u32,
-    /// Bytes transmitted.
-    pub tx_bytes: u32,
-    /// Frames dropped on receive.
-    pub rx_dropped: u32,
-    /// Transmit errors.
-    pub tx_errors: u32,
-}
-
-/// A network device (netdev).
-///
-/// The packet path (smoltcp, DHCP, MQTT) uses this trait; the network *service*
-/// state machine lives in `esp-sdk-net` and is tested independently.
-pub trait NetDevice {
-    /// Interface name, e.g. `wlan0`.
-    fn name(&self) -> &'static str;
-
-    /// Hardware address.
-    fn mac(&self) -> MacAddr;
-
-    /// Maximum transmission unit.
-    fn mtu(&self) -> usize;
-
-    /// Bring the interface up.
-    async fn up(&mut self) -> Result<()>;
-
-    /// Bring the interface down.
-    async fn down(&mut self);
-
-    /// Current link state.
-    fn link(&self) -> LinkState;
-
-    /// Counters snapshot.
-    fn stats(&self) -> NetStats;
-
-    /// Transmit one Ethernet frame.
-    async fn transmit(&mut self, frame: &[u8]) -> Result<()>;
-
-    /// Receive one frame, returning its length.
-    async fn receive(&mut self, buf: &mut [u8]) -> Result<usize>;
-}
-
-/// Hardware random number generator.
-pub trait Rng {
-    /// Fill `buf` with random bytes.
-    fn fill(&mut self, buf: &mut [u8]);
-}
+pub use delay::Delay;
+pub use error::{Error, Result};
+pub use flash::Flash;
+pub use gpio::GpioPin;
+pub use i2c::I2cBus;
+pub use net::{LinkState, MacAddr, NetDevice, NetStats};
+pub use rng::Rng;
+pub use serial::Serial;
+pub use spi::SpiBus;
 
 #[cfg(any(test, feature = "mock"))]
 pub mod mock;
-
-#[cfg(test)]
-mod tests {
-    use super::mock::*;
-    use super::*;
-
-    #[test]
-    fn i2c_register_protocol_roundtrip() {
-        let mut bus = MockI2c::new().with_device(0x50);
-        block_on(bus.write(0x50, &[0x10, 0xAA, 0xBB])).unwrap();
-
-        let mut buf = [0u8; 2];
-        block_on(bus.write(0x50, &[0x10])).unwrap();
-        block_on(bus.read(0x50, &mut buf)).unwrap();
-        assert_eq!(buf, [0xAA, 0xBB]);
-
-        assert_eq!(
-            bus.memory(0x50).map(|m| &m[0x10..0x12]),
-            Some(&[0xAA, 0xBB][..])
-        );
-    }
-
-    #[test]
-    fn i2c_unknown_address_is_an_error() {
-        let mut bus = MockI2c::new();
-        assert_eq!(
-            block_on(bus.write(0x42, &[0x00])),
-            Err(Error::InvalidAddress)
-        );
-        assert_eq!(
-            block_on(bus.read(0x42, &mut [0u8; 1])),
-            Err(Error::InvalidAddress)
-        );
-    }
-
-    #[test]
-    fn gpio_state_is_observable() {
-        let mut pin = MockGpio::new();
-        assert!(!pin.get());
-        pin.set(true);
-        assert!(pin.get());
-        assert_eq!(pin.writes(), 1);
-        pin.set(true);
-        assert_eq!(pin.writes(), 1);
-    }
-
-    #[test]
-    fn spi_loopback_copies_tx_to_rx() {
-        let mut spi = MockSpi::loopback();
-        let tx = [0x01, 0x02, 0x03];
-        let mut rx = [0u8; 3];
-        block_on(spi.transfer(&tx, &mut rx)).unwrap();
-        assert_eq!(rx, tx);
-    }
-
-    #[test]
-    fn spi_rejects_length_mismatch() {
-        let mut spi = MockSpi::loopback();
-        let mut rx = [0u8; 2];
-        assert_eq!(
-            block_on(spi.transfer(&[0u8; 3], &mut rx)),
-            Err(Error::InvalidArgument)
-        );
-    }
-
-    #[test]
-    fn serial_accumulates_writes() {
-        let mut port = MockSerial::new();
-        block_on(port.write(b"hello ")).unwrap();
-        block_on(port.write(b"world")).unwrap();
-        assert_eq!(port.written(), b"hello world");
-    }
-
-    #[test]
-    fn flash_requires_erase_before_write() {
-        let mut flash = MockFlash::new(256, 64);
-
-        // Erased flash accepts a first program.
-        block_on(flash.write(0, b"x")).unwrap();
-        // Programming the same byte again without an erase must fail.
-        assert_eq!(block_on(flash.write(0, b"y")), Err(Error::NotErased));
-
-        block_on(flash.erase(0, 64)).unwrap();
-        block_on(flash.write(0, b"ok")).unwrap();
-
-        let mut buf = [0u8; 2];
-        block_on(flash.read(0, &mut buf)).unwrap();
-        assert_eq!(&buf, b"ok");
-    }
-
-    #[test]
-    fn flash_rejects_unaligned_erase_and_out_of_range() {
-        let mut flash = MockFlash::new(256, 64);
-        assert_eq!(block_on(flash.erase(1, 64)), Err(Error::InvalidArgument));
-        assert_eq!(block_on(flash.erase(0, 512)), Err(Error::OutOfRange));
-        assert_eq!(
-            block_on(flash.read(255, &mut [0u8; 2])),
-            Err(Error::OutOfRange)
-        );
-    }
-
-    #[test]
-    fn mac_multicast_bit() {
-        assert!(MacAddr::new([0x01, 0, 0, 0, 0, 0]).is_multicast());
-        assert!(!MacAddr::new([0x02, 0, 0, 0, 0, 0]).is_multicast());
-        assert_eq!(
-            MacAddr::new([1, 2, 3, 4, 5, 6]).as_bytes(),
-            [1, 2, 3, 4, 5, 6]
-        );
-    }
-
-    #[test]
-    fn delay_accumulates() {
-        let mut delay = MockDelay::new();
-        delay.delay_us(10);
-        delay.delay_ms(2);
-        assert_eq!(delay.elapsed_us(), 10 + 2_000);
-    }
-}

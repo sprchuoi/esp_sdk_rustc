@@ -424,7 +424,8 @@ pub trait NetDevice { fn name(&self) -> &'static str; fn mtu(&self) -> usize;
                       async fn receive(&mut self, buf: &mut [u8]) -> Result<usize>; }
 ```
 
-*Implemented:* `hal/` (traits, `Error`, and the `mock` module) and `soc/esp32s3` (`Serial`, `Delay`,
+*Implemented:* `hal/` (one module per peripheral, plus a matching `mock/` module:
+`delay`, `gpio`, `i2c`, `spi`, `serial`, `flash`, `net`, `rng`, `error`) and `soc/esp32s3` (`Serial`, `Delay`,
 `GpioPin`, `I2cBus`, `SpiBus`; the example's console and I2C scan go through the SDK traits, not
 esp-hal directly). Device-class traits — `Eeprom`,
 `Mtd`, `NetDevice`, DMA buffers — build on these in `drivers/`; full contracts are in
