@@ -169,7 +169,7 @@ impl<const N: usize> ServiceManager<N> {
             }
         }
 
-        let id: ServiceId = ServiceId::new(self.count as u8);
+        let id = ServiceId::new(self.count as u8);
         self.specs[self.count] = Some(spec);
         self.states[self.count] = ServiceState::Idle;
         self.count += 1;
