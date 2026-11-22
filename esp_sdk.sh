@@ -16,6 +16,7 @@ cd "$ROOT"
 
 SIM="$ROOT/third_party/esp32sim"
 OUT="$ROOT/target/sim"
+HW="$ROOT/target/hw"
 TARGET="xtensa-esp32s3-none-elf"
 EXAMPLE="hello-kernel"
 ROM="$SIM/web/wasm/fw/esp32s3_rev0_rom.elf"
@@ -97,8 +98,9 @@ ensure_rom() {
 }
 
 gen_partition_table() {
-  mkdir -p "$OUT"
-  python3 - "$OUT/partition-table.bin" <<'PY'
+  local out="${1:-$OUT}"
+  mkdir -p "$out"
+  python3 - "$out/partition-table.bin" <<'PY'
 import hashlib, struct, sys
 MAGIC, MD5_MAGIC = 0x50AA, 0xEBEB
 entries = [
@@ -151,16 +153,17 @@ cmd_nostd() {
 
 # --- device ---------------------------------------------------------------
 cmd_build() {
+  local out="${OUT_DIR:-$OUT}"
   setup_xtensa
-  log "building examples/$EXAMPLE for $TARGET"
+  log "building examples/$EXAMPLE for $TARGET (${ESP_FEATURES:-sim backend})"
   ( cd "$ROOT/examples/$EXAMPLE" && cargo build --release --target "$TARGET" ${ESP_FEATURES:+--features "$ESP_FEATURES"} )
-  mkdir -p "$OUT"
-  elf2image "$ROOT/examples/$EXAMPLE/target/$TARGET/release/$EXAMPLE" "$OUT/app.bin" 16MB
-  gen_partition_table
+  mkdir -p "$out"
+  elf2image "$ROOT/examples/$EXAMPLE/target/$TARGET/release/$EXAMPLE" "$out/app.bin" 16MB
+  gen_partition_table "$out"
   local bootloader
   bootloader="$(find_bootloader)" || die "no ESP-IDF S3 bootloader found; set ESP_BOOTLOADER"
-  cp "$bootloader" "$OUT/bootloader.bin"
-  log "image ready in target/sim"
+  cp "$bootloader" "$out/bootloader.bin"
+  log "image ready in $out"
 }
 
 cmd_soc() {
@@ -186,7 +189,7 @@ run_sim() { # args passed to esp32sim
 }
 
 cmd_sim() {
-  [ -f "$OUT/app.bin" ] || cmd_build
+  ESP_FEATURES="" cmd_build
   log "booting $EXAMPLE in esp32sim"
   run_sim --bootloader "$OUT/bootloader.bin" --ptable "$OUT/partition-table.bin" \
     --app "$OUT/app.bin" --psram-mb 8
@@ -201,7 +204,7 @@ cmd_sim() {
 }
 
 cmd_console() {
-  [ -f "$OUT/app.bin" ] || cmd_build
+  ESP_FEATURES="" cmd_build
   local script
   script="$(mktemp)"
   printf '0.3 uart0 help\n0.8 uart0 version\n1.2 uart0 status\n1.6 uart0 selftest\n' > "$script"
@@ -217,7 +220,7 @@ cmd_console() {
 }
 
 cmd_rwdt() {
-  [ -f "$OUT/app.bin" ] || cmd_build
+  ESP_FEATURES="" cmd_build
   local script
   script="$(mktemp)"
   printf '0.3 uart0 rwdt-starve\n' > "$script"
@@ -265,9 +268,9 @@ require_port() {
 }
 
 cmd_flash() {
-  # Hardware build needs the esp-hal UART backend for RX.
+  # Hardware build needs the esp-hal UART backend; keep it out of target/sim.
   local features="${ESP_FEATURES:-hardware-uart}"
-  ESP_FEATURES="$features" cmd_build
+  OUT_DIR="$HW" ESP_FEATURES="$features" cmd_build
   local port baud
   port="$(require_port)" || exit 1
   baud="${ESP_BAUD:-921600}"
@@ -278,9 +281,9 @@ cmd_flash() {
   log "flashing bootloader + partition table + app to $port"
   python3 -m esptool --chip esp32s3 -p "$port" -b "$baud" write-flash \
     --flash-mode keep --flash-freq keep --flash-size keep \
-    0x0 "$OUT/bootloader.bin" \
-    0x8000 "$OUT/partition-table.bin" \
-    0x10000 "$OUT/app.bin"
+    0x0 "$HW/bootloader.bin" \
+    0x8000 "$HW/partition-table.bin" \
+    0x10000 "$HW/app.bin"
   echo "FLASH OK: $port"
 }
 
