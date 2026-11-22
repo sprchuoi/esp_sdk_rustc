@@ -45,6 +45,10 @@ pub struct Serial;
 
 #[cfg(not(feature = "hardware-uart"))]
 impl Serial {
+    fn emit(&mut self, bytes: &[u8]) {
+        esp_println::Printer::write_bytes(bytes);
+    }
+
     /// Create the console.
     #[must_use]
     pub fn uart0(
@@ -78,7 +82,12 @@ impl Serial {
 #[cfg(not(feature = "hardware-uart"))]
 impl fmt::Write for Serial {
     fn write_str(&mut self, text: &str) -> fmt::Result {
-        esp_println::Printer::write_bytes(text.as_bytes());
+        for (index, part) in text.split('\n').enumerate() {
+            if index > 0 {
+                self.emit(b"\r\n");
+            }
+            self.emit(part.as_bytes());
+        }
         Ok(())
     }
 }
@@ -298,6 +307,16 @@ impl<'d> Serial<'d> {
         })
     }
 
+    fn emit(&mut self, bytes: &[u8]) {
+        let mut rest = bytes;
+        while !rest.is_empty() {
+            match self.uart.write(rest) {
+                Ok(0) | Err(_) => break,
+                Ok(written) => rest = &rest[written..],
+            }
+        }
+    }
+
     /// Pop one received byte, if ready.
     pub fn read_byte(&mut self) -> Option<u8> {
         if !self.uart.read_ready() {
@@ -311,7 +330,13 @@ impl<'d> Serial<'d> {
 #[cfg(feature = "hardware-uart")]
 impl fmt::Write for Serial<'_> {
     fn write_str(&mut self, text: &str) -> fmt::Result {
-        self.uart.write_str(text).map_err(|_| fmt::Error)
+        for (index, part) in text.split('\n').enumerate() {
+            if index > 0 {
+                self.emit(b"\r\n");
+            }
+            self.emit(part.as_bytes());
+        }
+        Ok(())
     }
 }
 

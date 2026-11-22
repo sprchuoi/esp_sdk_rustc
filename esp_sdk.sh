@@ -265,6 +265,10 @@ require_port() {
        Run:  sudo chmod 666 $port
        or add a udev rule for the CH343 (see docs/HARDWARE.md)."
   fi
+  if command -v fuser >/dev/null 2>&1 && fuser "$port" >/dev/null 2>&1; then
+    die "$port is in use (minicom/screen?). Close it first:
+       minicom: Ctrl-A X   screen: Ctrl-A \\"
+  fi
   echo "$port"
 }
 
