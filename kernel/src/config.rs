@@ -32,3 +32,9 @@ pub const MEMORY_REGIONS: usize = 4;
 
 /// Default number of distinct fault codes retained.
 pub const FAULT_CAPACITY: usize = 16;
+
+/// How long a ready task may wait for a lower class to be boosted.
+///
+/// After this, a ready `App`/`Net` task is promoted one class for one run, so a
+/// busy high-priority class cannot starve telemetry forever.
+pub const AGING_THRESHOLD_US: u64 = 100_000;

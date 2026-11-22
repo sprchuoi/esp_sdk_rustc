@@ -158,8 +158,11 @@ The scheduler is real, and it is priority-based; it is **not** preemptive (ADR-0
   - recursion is banned in kernel and drivers (review rule, plus the compiler catches unbounded
     generic recursion);
   - a task that needs a deep call chain gets a `#[ram]` static buffer, not a bigger stack.
-- **Starvation guard:** class weights + aging (a `Net` task waiting > 100 ms while `App` is
-  continuously ready gets promoted for one slice).
+- **Starvation guard (implemented):** `Scheduler::age(now)` promotes a ready `App`/`Net` task that
+  has waited longer than `AGING_THRESHOLD_US` (100 ms) by one class, for one run; `Ctrl` is never
+  promoted and the base class is restored when the task runs.
+- **CPU accounting (implemented):** `begin_run`/`end_run` measure run time; `TaskStats` keeps wakes,
+  runs, total and maximum run time, and mean run time for the diagnostics dump.
 - **CPU accounting:** CCOUNT (Xtensa) / `mcycle` (RISC-V) sampled at 1 kHz by a high-priority
   timer; per-task run time, wake count, max wake latency, overruns. `sched` console command and a
   diagnostics entity expose them.
@@ -419,7 +422,8 @@ pub trait NetDevice { fn name(&self) -> &'static str; fn mtu(&self) -> usize;
                       async fn receive(&mut self, buf: &mut [u8]) -> Result<usize>; }
 ```
 
-*Implemented:* `hal/` (traits, `Error`, and the `mock` module). Device-class traits — `Eeprom`,
+*Implemented:* `hal/` (traits, `Error`, and the `mock` module) and `soc/esp32s3` (`Serial`, `Delay`;
+the example's console writes through the SDK trait, not esp-hal directly). Device-class traits — `Eeprom`,
 `Mtd`, `NetDevice`, DMA buffers — build on these in `drivers/`; full contracts are in
 [DRIVERS.md](DRIVERS.md).
 
@@ -546,7 +550,7 @@ of the offending symbols. Target: ≤ 450 KiB binary for the sensor node without
 ## 8. Testing hooks built into the design
 
 - **Host arch** (`chip-host`): deterministic clock, scripted I2C/SPI/serial/GPIO/flash mocks
-  (`hal::mock`), in-memory KV — 163 host tests today, run in milliseconds.
+  (`hal::mock`), in-memory KV — 174 host tests today, run in milliseconds.
 - **Scheduler tests:** deterministic single-threaded harness that pumps the executor and asserts run
   order, deadlines, overrun events and the starvation guard.
 - **Interrupt latency test:** GPIO toggle at ISR entry/exit, measured on a scope; recorded per release.

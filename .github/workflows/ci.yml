@@ -91,7 +91,7 @@ jobs:
           default: true
           override: true
       - if: steps.gate.outputs.enabled == 'true'
-        run: cargo build --release --target xtensa-esp32s3-none-elf -p esp-sdk-esp32s3
+        run: cargo build --release --target xtensa-esp32s3-none-elf --manifest-path soc/esp32s3/Cargo.toml
 
   device-esp32c6:
     name: build ESP32-C6

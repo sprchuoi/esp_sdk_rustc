@@ -1,6 +1,6 @@
 # esp_sdk_rustc — Build Plan
 
-**Status:** draft v0.11 · 2026-09-21
+**Status:** draft v0.12 · 2026-09-21
 **Goal:** a Rust **SDK** for ESP32 smart-home nodes that ships an OS — a tiny RTOS with the scheduler,
 drivers, network and device framework — portable across chips and boards the way a Linux kernel is:
 configuration-driven, hardware described in data, drivers bound by compatible string. Customers
@@ -156,6 +156,7 @@ Two documents carry the detail:
 | **Supervisor** | `kernel/supervisor` | 1 | heartbeats (report-once), watchdog feed/rearm, boot attempts → safe mode |
 | **Driver binding** | `drivers/model` | 2 | `DeviceNode`/`DriverDesc`, compatible matching, pre-order bind, unbound detection |
 | **Example app + emulator** | `examples/hello-kernel`, `esp_sdk.sh` | 2 | boots in esp32sim: scheduler ticks, IPC traffic, diagnostics dump, asserted by script |
+| **SoC seed (ESP32-S3)** | `soc/esp32s3` | 2 | `hal::Serial` (console) + `hal::Delay` on esp-hal; example uses the SDK HAL, not esp-println directly |
 | **AT24 EEPROM driver** | `drivers/eeprom` | 3 | page-aware writes, `tWR` wait, 1/2-byte addressing, host tests |
 | **Boot contract** | `boot/` | 5 | partition validation, otadata CRC/state/selection, app descriptor |
 | Scheduler (priority classes, tickless timers, accounting) | `kernel/sched` | 1 | run order, deadlines and overruns proven by deterministic host tests + 24 h on target |
@@ -289,6 +290,10 @@ No product code. Establish what is actually true about the hardware and the tool
 - [x] **Supervisor:** heartbeat deadlines reported once per miss, watchdog feed/rearm, boot-attempt
       counter that enters safe mode (`kernel/supervisor.rs`).
 - [x] **Scheduler suspend/resume:** suspended tasks swallow wakes and timers; `resume` re-arms.
+- [x] **CPU accounting:** `begin_run`/`end_run`, `TaskStats` (wakes, runs, total/max/mean run time).
+- [x] **Starvation aging:** ready tasks waiting > 100 ms are promoted one class for one run.
+- [x] **Crash integration test:** panic record → RTC bytes → next boot decode, boot-attempt safe
+      mode and heartbeat reporting (`kernel/tests/boot_crash.rs`).
 - [ ] **Scheduler integration:** per-class executor with its own stack (8 KiB), `spawn`/
       `spawn_periodic`, `yield`, `suspend`/`resume`, starvation aging, `sched` stats.
 - [ ] **Timers:** static deadline heap (32 entries), tickless arm/disarm, period-overrun detection.
@@ -325,6 +330,8 @@ The phase that turns "a firmware" into "an SDK you can port".
       unbound detection (`drivers/src/model.rs`).
 - [ ] **Driver core:** generated registry from Kconfig, probe order (buses before children),
       `ProbeError::Deferred` retry, typed device table, `devices` console command.
+- [x] **SoC seed:** `soc/esp32s3` implements `hal::Serial` (UART console via the esp-println backend)
+      and `hal::Delay`; the example's banner, console and loop go through the SDK HAL. `--soc` builds it.
 - [ ] **Bus model:** I2C (timeouts, recovery), SPI (CS, modes, DMA threshold), UART, 1-Wire traits
       and S3 implementations.
 - [x] **Simulation seed:** `examples/hello-kernel` builds for `xtensa-esp32s3-none-elf`, boots in

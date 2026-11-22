@@ -8,8 +8,8 @@ publish = false
 esp-hal = { version = "1.2.2", features = ["esp32s3"] }
 esp-bootloader-esp-idf = { version = "0.6.0", features = ["esp32s3"] }
 esp-backtrace = { version = "0.20.0", features = ["esp32s3", "panic-handler", "println"] }
-esp-println = { version = "0.18.0", features = ["esp32s3"] }
 esp-sdk-kernel = { path = "../../kernel" }
+esp-sdk-esp32s3 = { path = "../../soc/esp32s3" }
 
 [profile.release]
 opt-level = "s"

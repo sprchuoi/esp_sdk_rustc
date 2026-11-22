@@ -25,6 +25,44 @@ pub enum SchedError {
     InvalidTask,
     /// The timer heap is full; the task was not armed.
     TimerQueueFull,
+    /// `end_run` was called without a matching `begin_run`.
+    NotRunning,
+}
+
+/// Per-task scheduling accounting.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct TaskStats {
+    /// Times the task was made ready by a wake (not by a timer).
+    pub wakes: u32,
+    /// Completed run measurements.
+    pub runs: u32,
+    /// Total measured run time, in microseconds.
+    pub run_us: u64,
+    /// Longest single run, in microseconds.
+    pub max_run_us: u64,
+}
+
+impl TaskStats {
+    /// Zeroed statistics.
+    #[must_use]
+    pub const fn new() -> Self {
+        Self {
+            wakes: 0,
+            runs: 0,
+            run_us: 0,
+            max_run_us: 0,
+        }
+    }
+
+    /// Mean run time in microseconds (0 before the first run).
+    #[must_use]
+    pub const fn mean_run_us(&self) -> u64 {
+        if self.runs == 0 {
+            0
+        } else {
+            self.run_us / self.runs as u64
+        }
+    }
 }
 
 /// Priority class of a task.
@@ -270,6 +308,10 @@ pub struct Scheduler {
     timers: TimerHeap,
     classes: [Option<Class>; MAX_TASKS],
     suspended: [bool; MAX_TASKS],
+    promoted: [bool; MAX_TASKS],
+    ready_since: [u64; MAX_TASKS],
+    run_started: [Option<u64>; MAX_TASKS],
+    stats: [TaskStats; MAX_TASKS],
     generations: [u32; MAX_TASKS],
     now_us: u64,
 }
@@ -289,6 +331,10 @@ impl Scheduler {
             timers: TimerHeap::new(),
             classes: [None; MAX_TASKS],
             suspended: [false; MAX_TASKS],
+            promoted: [false; MAX_TASKS],
+            ready_since: [0; MAX_TASKS],
+            run_started: [None; MAX_TASKS],
+            stats: [TaskStats::new(); MAX_TASKS],
             generations: [0; MAX_TASKS],
             now_us: 0,
         }
@@ -318,11 +364,85 @@ impl Scheduler {
         self.classes[task.index()]
     }
 
-    /// Whether `task` is ready to run.
+    /// Whether `task` is ready to run (including a promoted task).
     #[must_use]
     pub fn is_ready(&self, task: TaskId) -> bool {
-        self.class_of(task)
-            .is_some_and(|class| self.ready[class.index()].contains(task))
+        self.queued_class(task).is_some()
+    }
+
+    /// Class queue currently holding the task, which differs from its base
+    /// class while it is promoted by aging.
+    #[must_use]
+    pub fn queued_class(&self, task: TaskId) -> Option<Class> {
+        Class::ALL
+            .into_iter()
+            .find(|class| self.ready[class.index()].contains(task))
+    }
+
+    /// Accounting for a task.
+    #[must_use]
+    pub fn stats(&self, task: TaskId) -> Option<&TaskStats> {
+        if task.index() >= MAX_TASKS || self.class_of(task).is_none() {
+            return None;
+        }
+        Some(&self.stats[task.index()])
+    }
+
+    /// Start measuring a run. Pair with [`Scheduler::end_run`].
+    pub fn begin_run(&mut self, task: TaskId, now_us: u64) -> Result<(), SchedError> {
+        if self.class_of(task).is_none() {
+            return Err(SchedError::InvalidTask);
+        }
+        self.run_started[task.index()] = Some(now_us);
+        Ok(())
+    }
+
+    /// Finish measuring a run, updating the task's stats. Returns the duration.
+    pub fn end_run(&mut self, task: TaskId, now_us: u64) -> Result<u64, SchedError> {
+        if self.class_of(task).is_none() {
+            return Err(SchedError::InvalidTask);
+        }
+        let Some(started) = self.run_started[task.index()].take() else {
+            return Err(SchedError::NotRunning);
+        };
+        let duration = now_us.saturating_sub(started);
+        let stats = &mut self.stats[task.index()];
+        stats.runs = stats.runs.saturating_add(1);
+        stats.run_us = stats.run_us.saturating_add(duration);
+        stats.max_run_us = stats.max_run_us.max(duration);
+        Ok(duration)
+    }
+
+    /// Promote ready tasks that have waited longer than
+    /// [`crate::config::AGING_THRESHOLD_US`], one class at a time.
+    ///
+    /// Returns how many tasks were promoted. The executor calls this before
+    /// choosing the next task; a promoted task is returned to its base class
+    /// after it runs.
+    pub fn age(&mut self, now_us: u64) -> u32 {
+        let mut promoted = 0;
+        for raw in 0..MAX_TASKS {
+            let Some(class) = self.classes[raw] else {
+                continue;
+            };
+            if class == Class::Ctrl || self.promoted[raw] {
+                continue;
+            }
+            let task = TaskId::new(raw as u8);
+            if !self.ready[class.index()].contains(task) {
+                continue;
+            }
+            if now_us.saturating_sub(self.ready_since[raw]) < crate::config::AGING_THRESHOLD_US {
+                continue;
+            }
+            let target = Class::ALL[class.index() - 1];
+            self.ready[class.index()].remove(task);
+            if self.ready[target.index()].push(task).is_ok() {
+                self.promoted[raw] = true;
+                promoted += 1;
+            }
+        }
+        promoted
     }
 
     /// Wake a task: invalidate any pending sleep and mark it ready.
@@ -339,7 +459,13 @@ impl Scheduler {
         if self.suspended[task.index()] {
             return Ok(());
         }
-        self.ready[class.index()].push(task)
+        if self.is_ready(task) {
+            return Ok(());
+        }
+        self.ready[class.index()].push(task)?;
+        self.ready_since[task.index()] = self.now_us;
+        self.stats[task.index()].wakes = self.stats[task.index()].wakes.saturating_add(1);
+        Ok(())
     }
 
     /// Suspend a task: remove it from the ready set and ignore wakes until
@@ -349,6 +475,10 @@ impl Scheduler {
             return Err(SchedError::InvalidTask);
         };
         self.suspended[task.index()] = true;
+        self.promoted[task.index()] = false;
+        if let Some(queued) = self.queued_class(task) {
+            self.ready[queued.index()].remove(task);
+        }
         self.ready[class.index()].remove(task);
         Ok(())
     }
@@ -359,8 +489,14 @@ impl Scheduler {
             return Err(SchedError::InvalidTask);
         };
         self.suspended[task.index()] = false;
+        self.promoted[task.index()] = false;
         self.generations[task.index()] = self.generations[task.index()].wrapping_add(1);
-        self.ready[class.index()].push(task)
+        if self.is_ready(task) {
+            return Ok(());
+        }
+        self.ready[class.index()].push(task)?;
+        self.ready_since[task.index()] = self.now_us;
+        Ok(())
     }
 
     /// Whether a task is suspended.
@@ -394,9 +530,13 @@ impl Scheduler {
     /// The task is removed from the ready set; the executor marks it ready
     /// again when its future returns `Pending`.
     pub fn next_ready(&mut self) -> Option<TaskId> {
-        Class::ALL
-            .iter()
-            .find_map(|class| self.ready[class.index()].pop())
+        for class in Class::ALL {
+            if let Some(task) = self.ready[class.index()].pop() {
+                self.promoted[task.index()] = false;
+                return Some(task);
+            }
+        }
+        None
     }
 
     /// Advance time to `now_us` and wake every task whose deadline is due.
@@ -598,6 +738,88 @@ mod tests {
         scheduler.sleep_until(task(1), 100).unwrap();
 
         assert_eq!(scheduler.advance_to(100), 0);
+        assert_eq!(scheduler.next_ready(), None);
+    }
+
+    #[test]
+    fn accounting_accumulates_runs() {
+        let mut scheduler = Scheduler::new();
+        scheduler.register(task(1), Class::App).unwrap();
+
+        scheduler.begin_run(task(1), 100).unwrap();
+        assert_eq!(scheduler.end_run(task(1), 350), Ok(250));
+        scheduler.begin_run(task(1), 400).unwrap();
+        assert_eq!(scheduler.end_run(task(1), 450), Ok(50));
+
+        let stats = scheduler.stats(task(1)).unwrap();
+        assert_eq!(stats.runs, 2);
+        assert_eq!(stats.run_us, 300);
+        assert_eq!(stats.max_run_us, 250);
+        assert_eq!(stats.mean_run_us(), 150);
+    }
+
+    #[test]
+    fn end_run_requires_a_start() {
+        let mut scheduler = Scheduler::new();
+        scheduler.register(task(1), Class::App).unwrap();
+        assert_eq!(scheduler.end_run(task(1), 10), Err(SchedError::NotRunning));
+        assert_eq!(
+            scheduler.begin_run(task(9), 0),
+            Err(SchedError::InvalidTask)
+        );
+    }
+
+    #[test]
+    fn wakes_are_counted_only_when_queued() {
+        let mut scheduler = Scheduler::new();
+        scheduler.register(task(1), Class::App).unwrap();
+        scheduler.wake(task(1)).unwrap();
+        scheduler.wake(task(1)).unwrap();
+        assert_eq!(scheduler.stats(task(1)).unwrap().wakes, 1);
+        assert_eq!(scheduler.next_ready(), Some(task(1)));
+        scheduler.wake(task(1)).unwrap();
+        assert_eq!(scheduler.stats(task(1)).unwrap().wakes, 2);
+    }
+
+    #[test]
+    fn aging_promotes_a_starved_task() {
+        let mut scheduler = Scheduler::new();
+        scheduler.register(task(1), Class::Net).unwrap();
+        scheduler.wake(task(1)).unwrap();
+        assert_eq!(scheduler.age(0), 0);
+
+        let now = crate::config::AGING_THRESHOLD_US + 1;
+        scheduler.advance_to(now);
+        assert_eq!(scheduler.age(now), 1);
+        assert_eq!(scheduler.queued_class(task(1)), Some(Class::App));
+
+        assert_eq!(scheduler.next_ready(), Some(task(1)));
+        assert_eq!(scheduler.queued_class(task(1)), None);
+    }
+
+    #[test]
+    fn control_class_is_never_promoted() {
+        let mut scheduler = Scheduler::new();
+        scheduler.register(task(1), Class::Ctrl).unwrap();
+        scheduler.wake(task(1)).unwrap();
+        let now = crate::config::AGING_THRESHOLD_US * 4;
+        scheduler.advance_to(now);
+        assert_eq!(scheduler.age(now), 0);
+        assert_eq!(scheduler.queued_class(task(1)), Some(Class::Ctrl));
+    }
+
+    #[test]
+    fn a_promoted_task_is_not_duplicated_by_a_wake() {
+        let mut scheduler = Scheduler::new();
+        scheduler.register(task(1), Class::Net).unwrap();
+        scheduler.wake(task(1)).unwrap();
+        let now = crate::config::AGING_THRESHOLD_US + 1;
+        scheduler.advance_to(now);
+        scheduler.age(now);
+
+        scheduler.wake(task(1)).unwrap();
+        assert!(scheduler.is_ready(task(1)));
+        assert_eq!(scheduler.next_ready(), Some(task(1)));
         assert_eq!(scheduler.next_ready(), None);
     }
 

@@ -39,10 +39,11 @@ Host (stable Rust):
 
 Device (Xtensa toolchain):
   --build       build examples/hello-kernel and assemble target/sim/*
+  --soc         build the ESP32-S3 platform crate
   --bootloader  build the B0 bootloader and target/sim/bootloader-b0.bin
   --sim         boot the example in esp32sim (asserts)
   --sim-b0      boot the B0 bootloader in esp32sim (asserts)
-  --all         --check --build --bootloader --sim --sim-b0
+  --all         --check --soc --build --bootloader --sim --sim-b0
 
   --help        this text
 USAGE
@@ -152,6 +153,12 @@ cmd_build() {
   log "image ready in target/sim"
 }
 
+cmd_soc() {
+  setup_xtensa
+  log "building soc/esp32s3"
+  ( cd "$ROOT/soc/esp32s3" && cargo build --release --target "$TARGET" )
+}
+
 cmd_bootloader() {
   setup_xtensa
   log "building B0 bootloader"
@@ -205,10 +212,11 @@ for arg in "$@"; do
     --nostd)      cmd_nostd ;;
     --check)      cmd_fmt; cmd_lint; cmd_test; cmd_docs ;;
     --build)      cmd_build ;;
+    --soc)        cmd_soc ;;
     --bootloader) cmd_bootloader ;;
     --sim)        cmd_sim ;;
     --sim-b0)     cmd_sim_b0 ;;
-    --all)        cmd_fmt; cmd_lint; cmd_test; cmd_docs; cmd_build; cmd_bootloader; cmd_sim; cmd_sim_b0 ;;
+    --all)        cmd_fmt; cmd_lint; cmd_test; cmd_docs; cmd_soc; cmd_build; cmd_bootloader; cmd_sim; cmd_sim_b0 ;;
     --help|-h)    usage; exit 0 ;;
     *)            echo "unknown command: $arg" >&2; usage; exit 2 ;;
   esac

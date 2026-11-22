@@ -625,6 +625,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "esp-sdk-esp32s3"
+version = "0.1.0"
+dependencies = [
+ "esp-hal",
+ "esp-println",
+ "esp-sdk-hal",
+]
+
+[[package]]
+name = "esp-sdk-hal"
+version = "0.1.0"
+
+[[package]]
 name = "esp-sdk-kernel"
 version = "0.1.0"
 
@@ -867,7 +880,7 @@ dependencies = [
  "esp-backtrace",
  "esp-bootloader-esp-idf",
  "esp-hal",
- "esp-println",
+ "esp-sdk-esp32s3",
  "esp-sdk-kernel",
 ]
 
