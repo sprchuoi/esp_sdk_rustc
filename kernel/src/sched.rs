@@ -27,6 +27,8 @@ pub enum SchedError {
     TimerQueueFull,
     /// `end_run` was called without a matching `begin_run`.
     NotRunning,
+    /// A periodic arm used a zero period.
+    InvalidPeriod,
 }
 
 /// Per-task scheduling accounting.
@@ -40,6 +42,8 @@ pub struct TaskStats {
     pub run_us: u64,
     /// Longest single run, in microseconds.
     pub max_run_us: u64,
+    /// Missed periodic slots (armed later than a full period).
+    pub overruns: u32,
 }
 
 impl TaskStats {
@@ -51,6 +55,7 @@ impl TaskStats {
             runs: 0,
             run_us: 0,
             max_run_us: 0,
+            overruns: 0,
         }
     }
 
@@ -312,6 +317,8 @@ pub struct Scheduler {
     ready_since: [u64; MAX_TASKS],
     run_started: [Option<u64>; MAX_TASKS],
     stats: [TaskStats; MAX_TASKS],
+    period_us: [u64; MAX_TASKS],
+    deadline_us: [u64; MAX_TASKS],
     generations: [u32; MAX_TASKS],
     now_us: u64,
 }
@@ -335,6 +342,8 @@ impl Scheduler {
             ready_since: [0; MAX_TASKS],
             run_started: [None; MAX_TASKS],
             stats: [TaskStats::new(); MAX_TASKS],
+            period_us: [0; MAX_TASKS],
+            deadline_us: [0; MAX_TASKS],
             generations: [0; MAX_TASKS],
             now_us: 0,
         }
@@ -522,7 +531,28 @@ impl Scheduler {
 
     /// Arm a relative deadline, saturating on overflow.
     pub fn sleep_for(&mut self, task: TaskId, delta_us: u64) -> Result<(), SchedError> {
+        self.period_us[task.index()] = 0;
         self.sleep_until(task, self.now_us.saturating_add(delta_us))
+    }
+
+    /// Arm a periodic deadline. The task re-arms itself when it runs; a fire
+    /// later than `deadline + period` counts as a missed slot (overrun).
+    ///
+    /// # Errors
+    /// [`SchedError::InvalidPeriod`] for a zero period, or the usual sleep errors.
+    pub fn arm_periodic(
+        &mut self,
+        task: TaskId,
+        period_us: u64,
+        now_us: u64,
+    ) -> Result<(), SchedError> {
+        if period_us == 0 {
+            return Err(SchedError::InvalidPeriod);
+        }
+        let deadline = now_us.saturating_add(period_us);
+        self.period_us[task.index()] = period_us;
+        self.deadline_us[task.index()] = deadline;
+        self.sleep_until(task, deadline)
     }
 
     /// Pick the highest-priority ready task, round-robin inside its class.
@@ -559,6 +589,10 @@ impl Scheduler {
                 && !self.suspended[index]
                 && self.wake(timer.task).is_ok()
             {
+                let period = self.period_us[index];
+                if period > 0 && self.now_us > self.deadline_us[index].saturating_add(period) {
+                    self.stats[index].overruns = self.stats[index].overruns.saturating_add(1);
+                }
                 woken += 1;
             }
         }
@@ -572,12 +606,94 @@ impl Scheduler {
     }
 }
 
+impl Scheduler {
+    /// Render the task table used by the `sched` console command.
+    ///
+    /// # Errors
+    /// Propagates writer errors.
+    pub fn write_stats<W: core::fmt::Write>(&self, out: &mut W) -> core::fmt::Result {
+        writeln!(out, "id class  ready susp wakes runs run_ms max_ms overrun")?;
+        for raw in 0..MAX_TASKS {
+            let Some(class) = self.classes[raw] else {
+                continue;
+            };
+            let task = TaskId::new(raw as u8);
+            let stats = &self.stats[raw];
+            writeln!(
+                out,
+                "{:2} {:5}  {:5} {:4} {:5} {:4} {:6} {:6} {:7}",
+                raw,
+                class_name(class),
+                self.is_ready(task),
+                self.suspended[raw],
+                stats.wakes,
+                stats.runs,
+                stats.run_us / 1_000,
+                stats.max_run_us / 1_000,
+                stats.overruns,
+            )?;
+        }
+        Ok(())
+    }
+}
+
+const fn class_name(class: Class) -> &'static str {
+    match class {
+        Class::Ctrl => "ctrl",
+        Class::App => "app",
+        Class::Net => "net",
+        Class::Idle => "idle",
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     fn task(raw: u8) -> TaskId {
         TaskId::new(raw)
+    }
+
+    #[test]
+    fn periodic_overrun_counts_a_missed_slot() {
+        let mut scheduler = Scheduler::new();
+        scheduler.register(task(1), Class::App).unwrap();
+        scheduler.arm_periodic(task(1), 100, 0).unwrap();
+        assert_eq!(scheduler.advance_to(250), 1);
+        assert_eq!(scheduler.stats(task(1)).unwrap().overruns, 1);
+    }
+
+    #[test]
+    fn periodic_on_time_has_no_overrun() {
+        let mut scheduler = Scheduler::new();
+        scheduler.register(task(1), Class::App).unwrap();
+        scheduler.arm_periodic(task(1), 100, 0).unwrap();
+        assert_eq!(scheduler.advance_to(100), 1);
+        assert_eq!(scheduler.stats(task(1)).unwrap().overruns, 0);
+    }
+
+    #[test]
+    fn zero_period_is_rejected() {
+        let mut scheduler = Scheduler::new();
+        scheduler.register(task(1), Class::App).unwrap();
+        assert_eq!(
+            scheduler.arm_periodic(task(1), 0, 0),
+            Err(SchedError::InvalidPeriod)
+        );
+    }
+
+    #[test]
+    fn stats_table_renders() {
+        let mut scheduler = Scheduler::new();
+        scheduler.register(task(1), Class::Ctrl).unwrap();
+        scheduler.begin_run(task(1), 0).unwrap();
+        scheduler.end_run(task(1), 5_000).unwrap();
+
+        let mut out = std::string::String::new();
+        scheduler.write_stats(&mut out).unwrap();
+        assert!(out.contains("ctrl"));
+        assert!(out.contains("overrun"));
+        assert!(out.contains("runs"));
     }
 
     #[test]

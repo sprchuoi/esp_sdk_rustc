@@ -294,6 +294,11 @@ No product code. Establish what is actually true about the hardware and the tool
 - [x] **Starvation aging:** ready tasks waiting > 100 ms are promoted one class for one run.
 - [x] **Crash integration test:** panic record → RTC bytes → next boot decode, boot-attempt safe
       mode and heartbeat reporting (`kernel/tests/boot_crash.rs`).
+- [x] **Periodic overruns:** `arm_periodic` + missed-slot accounting in `TaskStats::overruns`.
+- [x] **Stats table:** `Scheduler::write_stats` renders the `sched` command columns.
+- [x] **Event bus:** lossy drop-oldest and reliable all-or-nothing publishing, per-subscriber queues.
+- [x] **Boot manager:** decoded crash record + three-strike safe mode (`kernel/boot.rs`).
+- [x] **Latency method:** targets, procedure and results table in [latency.md](latency.md).
 - [ ] **Scheduler integration:** per-class executor with its own stack (8 KiB), `spawn`/
       `spawn_periodic`, `yield`, `suspend`/`resume`, starvation aging, `sched` stats.
 - [ ] **Timers:** static deadline heap (32 entries), tickless arm/disarm, period-overrun detection.

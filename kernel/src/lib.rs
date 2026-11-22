@@ -24,9 +24,11 @@
 //! tables, the executor integration, the event bus, the KV store, the driver
 //! core and the power policy.
 
+pub mod boot;
 pub mod config;
 pub mod console;
 pub mod crypto;
+pub mod event;
 pub mod ipc;
 pub mod irq;
 pub mod log;

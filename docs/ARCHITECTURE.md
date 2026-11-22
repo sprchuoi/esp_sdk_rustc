@@ -161,6 +161,8 @@ The scheduler is real, and it is priority-based; it is **not** preemptive (ADR-0
 - **Starvation guard (implemented):** `Scheduler::age(now)` promotes a ready `App`/`Net` task that
   has waited longer than `AGING_THRESHOLD_US` (100 ms) by one class, for one run; `Ctrl` is never
   promoted and the base class is restored when the task runs.
+- **Overrun detection (implemented):** `arm_periodic` + `TaskStats::overruns` count a deadline
+  missed by more than one period; `write_stats` renders the `sched` command table.
 - **CPU accounting (implemented):** `begin_run`/`end_run` measure run time; `TaskStats` keeps wakes,
   runs, total and maximum run time, and mean run time for the diagnostics dump.
 - **CPU accounting:** CCOUNT (Xtensa) / `mcycle` (RISC-V) sampled at 1 kHz by a high-priority
@@ -231,6 +233,10 @@ pub enum Event {
     ConfigChanged, Fault(FaultCode),
 }
 ```
+
+*Implemented seed:* `kernel/event.rs` — `EventBus<T, N, S>` with per-subscriber
+queues, `publish` (drop-oldest) and `try_publish` (all-or-nothing). A typed `Event`
+enum belongs to the application; the bus only needs `T: Copy + Default`.
 
 `BUS.publish(Event)` is non-blocking and drops the oldest message when a subscriber is slow, except
 for `Fault` and `OtaProgress`, which use dedicated reliable channels. Telemetry storms must never
@@ -554,7 +560,7 @@ of the offending symbols. Target: ≤ 450 KiB binary for the sensor node without
 ## 8. Testing hooks built into the design
 
 - **Host arch** (`chip-host`): deterministic clock, scripted I2C/SPI/serial/GPIO/flash mocks
-  (`hal::mock`), in-memory KV — 174 host tests today, run in milliseconds.
+  (`hal::mock`), in-memory KV — 185 host tests today, run in milliseconds.
 - **Scheduler tests:** deterministic single-threaded harness that pumps the executor and asserts run
   order, deadlines, overrun events and the starvation guard.
 - **Interrupt latency test:** GPIO toggle at ISR entry/exit, measured on a scope; recorded per release.
