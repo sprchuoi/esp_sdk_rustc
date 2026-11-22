@@ -45,6 +45,14 @@ Device (Xtensa toolchain):
   --console     drive the interactive console with scripted UART input
   --rwdt        stop the watchdog feed and assert a chip reset
   --sim-b0      boot the B0 bootloader in esp32sim (asserts)
+
+Hardware (USB attached; ESP_PORT overrides /dev/ttyACM* / /dev/ttyUSB*):
+  --flash        flash bootloader @0x0, partition table @0x8000, app @0x10000
+  --flash-erase  erase the whole flash first, then flash the three images
+  --monitor[=N]  reset the board and capture N seconds of UART (default 15)
+  --send=TEXT    with --monitor, write TEXT after reset ($'help\n' for CR/LF)
+  --hw           --flash then --monitor
+
   --all         --check --soc --build --bootloader --sim --console --sim-b0
 
   --help        this text
@@ -230,6 +238,122 @@ cmd_sim_b0() {
   echo "B0 OK: ROM loaded and ran our image"
 }
 
+# --- hardware -------------------------------------------------------------
+detect_port() {
+  if [ -n "${ESP_PORT:-}" ]; then
+    echo "$ESP_PORT"
+    return 0
+  fi
+  local port
+  for port in /dev/ttyACM* /dev/ttyUSB*; do
+    [ -e "$port" ] && { echo "$port"; return 0; }
+  done
+  return 1
+}
+
+require_port() {
+  local port
+  port="$(detect_port)" || die "no USB serial device found; set ESP_PORT=/dev/ttyACM0"
+  if [ ! -r "$port" ] || [ ! -w "$port" ]; then
+    die "$port is not readable/writable.
+       Run:  sudo chmod 666 $port
+       or add a udev rule for the CH343 (see docs/HARDWARE.md)."
+  fi
+  echo "$port"
+}
+
+cmd_flash() {
+  [ -f "$OUT/app.bin" ] || cmd_build
+  local port baud
+  port="$(require_port)" || exit 1
+  baud="${ESP_BAUD:-921600}"
+  if [ "${FLASH_ERASE:-0}" = "1" ]; then
+    log "erasing $port"
+    python3 -m esptool --chip esp32s3 -p "$port" -b "$baud" erase-flash
+  fi
+  log "flashing bootloader + partition table + app to $port"
+  python3 -m esptool --chip esp32s3 -p "$port" -b "$baud" write-flash \
+    --flash-mode keep --flash-freq keep --flash-size keep \
+    0x0 "$OUT/bootloader.bin" \
+    0x8000 "$OUT/partition-table.bin" \
+    0x10000 "$OUT/app.bin"
+  echo "FLASH OK: $port"
+}
+
+cmd_flash_erase() {
+  FLASH_ERASE=1 cmd_flash
+}
+
+cmd_monitor() {
+  local port baud seconds logfile reset
+  port="$(require_port)" || return 1
+  baud="${ESP_MONITOR_BAUD:-115200}"
+  seconds="${ESP_MONITOR_SECONDS:-15}"
+  if [[ "${1:-}" =~ ^[0-9]+$ ]]; then
+    seconds="$1"
+  fi
+  logfile="$ROOT/target/serial.log"
+  mkdir -p "$(dirname "$logfile")"
+  reset="${ESP_NO_RESET:-0}"; reset=$((1 - reset))
+  log "monitoring $port at $baud baud for ${seconds}s (log: $logfile)"
+  python3 - "$port" "$baud" "$seconds" "$logfile" "$reset" "${SEND_TEXT:-}" <<'PY'
+import sys, time
+try:
+    import serial
+except ImportError:
+    print("error: pyserial is missing; run: python3 -m pip install pyserial", file=sys.stderr)
+    sys.exit(1)
+
+port, baud, seconds, logfile, reset = sys.argv[1], int(sys.argv[2]), float(sys.argv[3]), sys.argv[4], sys.argv[5] == "1"
+send = sys.argv[6].encode() if len(sys.argv) > 6 else b""
+try:
+    ser = serial.Serial()
+    ser.port = port
+    ser.baudrate = baud
+    ser.timeout = 0.2
+    ser.dtr = False
+    ser.rts = False
+    ser.open()
+except Exception as exc:
+    print(f"error: cannot open {port}: {exc}", file=sys.stderr)
+    sys.exit(1)
+
+if reset:
+    # EN = RTS, IO0 = DTR on the DevKitC auto-reset circuit.
+    ser.rts = True
+    ser.dtr = False
+    time.sleep(0.15)
+    ser.rts = False
+
+if send:
+    time.sleep(1.0)
+    ser.write(send)
+    ser.flush()
+
+deadline = time.time() + seconds
+total = 0
+with open(logfile, "wb") as log:
+    try:
+        while time.time() < deadline:
+            data = ser.read(4096)
+            if data:
+                sys.stdout.buffer.write(data)
+                sys.stdout.buffer.flush()
+                log.write(data)
+                log.flush()
+                total += len(data)
+    except KeyboardInterrupt:
+        pass
+
+print(f"\n[monitor] {total} bytes, saved to {logfile}", file=sys.stderr)
+PY
+}
+
+cmd_hw() {
+  cmd_flash
+  cmd_monitor
+}
+
 # --- dispatch -------------------------------------------------------------
 [ $# -gt 0 ] || { usage; exit 2; }
 
@@ -248,6 +372,12 @@ for arg in "$@"; do
     --console)    cmd_console ;;
     --rwdt)       cmd_rwdt ;;
     --sim-b0)     cmd_sim_b0 ;;
+    --flash)      cmd_flash ;;
+    --flash-erase) cmd_flash_erase ;;
+    --monitor)    cmd_monitor ;;
+    --monitor=*)  cmd_monitor "${arg#--monitor=}" ;;
+    --send=*)     SEND_TEXT="${arg#--send=}" ;;
+    --hw)         cmd_hw ;;
     --all)        cmd_fmt; cmd_lint; cmd_test; cmd_docs; cmd_soc; cmd_build; cmd_bootloader; cmd_sim; cmd_console; cmd_sim_b0 ;;
     --help|-h)    usage; exit 0 ;;
     *)            echo "unknown command: $arg" >&2; usage; exit 2 ;;

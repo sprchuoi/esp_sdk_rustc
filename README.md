@@ -141,6 +141,8 @@ before any cutover. Plan: [docs/MIGRATION.md](docs/MIGRATION.md).
 ./esp_sdk.sh --soc          # build the ESP32-S3 platform layer (Serial, Delay, GPIO)
 ./esp_sdk.sh --console      # drive the interactive UART console in esp32sim
 ./esp_sdk.sh --rwdt         # stop the watchdog feed; assert a hardware reset
+./esp_sdk.sh --flash        # flash the three images to an attached ESP32-S3
+./esp_sdk.sh --monitor=15   # reset and capture the UART to target/serial.log
 ./esp_sdk.sh --build --sim  # example image, then boot it in esp32sim (asserted)
 ./esp_sdk.sh --sim-b0       # custom B0 bootloader in esp32sim (asserted)
 ./esp_sdk.sh --help         # everything else

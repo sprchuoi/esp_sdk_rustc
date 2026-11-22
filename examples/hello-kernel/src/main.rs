@@ -58,8 +58,13 @@ fn main() -> ! {
     let mut serial = Serial::uart0();
     let mut led = Output::new(peripherals.GPIO2, false);
 
-    // Hardware watchdog: the supervisor's deadline is software, the RWDT is the
-    // thing that actually resets a hung chip.
+    let _ = writeln!(serial);
+    let _ = writeln!(serial, "Sprchuoi ESP32 Boot");
+    let _ = writeln!(serial, "==============================================");
+    let _ = writeln!(serial, " esp-sdk hello-kernel on ESP32-S3");
+    let _ = writeln!(serial, " kernel: scheduler + IPC + diagnostics demo");
+    let _ = writeln!(serial, "==============================================");
+
     // I2C bus scan through the SDK HAL. On a bare devkit nothing answers; the
     // point is that the bus is driven by our trait, not by esp-hal directly.
     if let Ok(mut i2c) = I2c::new(peripherals.I2C0, peripherals.GPIO8, peripherals.GPIO9) {
@@ -82,17 +87,12 @@ fn main() -> ! {
     timer.disarm();
     let _ = writeln!(serial, "timer: boot_us={boot_us}");
 
+    // Hardware watchdog: the supervisor's deadline is software, the RWDT is the
+    // thing that actually resets a hung chip.
     let mut rtc = Rtc::new(peripherals.RTC_TIMER);
     rtc.rwdt
         .set_timeout(RwdtStage::Stage0, HalDuration::from_millis(5_000));
     rtc.rwdt.enable();
-
-    let _ = writeln!(serial);
-    let _ = writeln!(serial, "Sprchuoi ESP32 Boot");
-    let _ = writeln!(serial, "==============================================");
-    let _ = writeln!(serial, " esp-sdk hello-kernel on ESP32-S3");
-    let _ = writeln!(serial, " kernel: scheduler + IPC + diagnostics demo");
-    let _ = writeln!(serial, "==============================================");
 
     // The console framework running over the SDK HAL: UART0 is a `fmt::Write`
     // sink, commands are static, no allocation.
