@@ -31,7 +31,7 @@ move to a dedicated `bench-latency` image when the SoC interrupt layer is wired.
 
 | Build | Board | ISR width | ISR→task p99 | Timer jitter | Notes |
 |---|---|---|---|---|---|
-| — | — | — | — | — | no hardware measurement yet |
+| SDK hello-kernel, `irq-selftest` | ESP32-S3 rev0.2 DevKitC | — | 5–16 µs (ISR→main poll; not vector entry) | 100 µs one-shot, no misses | 2026-11-22, UART log |
 
 Host tests cover the *policies* (IRQ table dispatch counts, scheduler deadlines,
 overrun accounting) but cannot measure silicon latency. The first hardware run

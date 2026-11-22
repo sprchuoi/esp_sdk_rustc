@@ -16,3 +16,6 @@ esp-sdk-hal = { path = "../../hal" }
 opt-level = "s"
 lto = true
 debug = 2
+
+[features]
+irq-selftest = []

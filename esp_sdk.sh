@@ -153,7 +153,7 @@ cmd_nostd() {
 cmd_build() {
   setup_xtensa
   log "building examples/$EXAMPLE for $TARGET"
-  ( cd "$ROOT/examples/$EXAMPLE" && cargo build --release --target "$TARGET" )
+  ( cd "$ROOT/examples/$EXAMPLE" && cargo build --release --target "$TARGET" ${ESP_FEATURES:+--features "$ESP_FEATURES"} )
   mkdir -p "$OUT"
   elf2image "$ROOT/examples/$EXAMPLE/target/$TARGET/release/$EXAMPLE" "$OUT/app.bin" 16MB
   gen_partition_table

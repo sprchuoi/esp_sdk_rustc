@@ -52,6 +52,54 @@ fn cmd_starve(_args: &[&str], out: &mut dyn ConsoleIo) {
     }
 }
 
+#[cfg(feature = "irq-selftest")]
+mod irq_selftest {
+    use core::fmt::Write;
+    use core::sync::atomic::{AtomicU32, Ordering};
+
+    use esp_hal::handler;
+    use esp_hal::time::Instant;
+    use esp_sdk_esp32s3::{Timer, clear_timer_interrupt};
+    use esp_sdk_hal::Timer as _;
+
+    static COUNT: AtomicU32 = AtomicU32::new(0);
+    static AT_US: AtomicU32 = AtomicU32::new(0);
+
+    #[handler]
+    fn on_timer() {
+        clear_timer_interrupt();
+        let now = Instant::now().duration_since_epoch().as_micros() as u32;
+        AT_US.store(now, Ordering::Relaxed);
+        COUNT.fetch_add(1, Ordering::Relaxed);
+    }
+
+    pub fn run(timer: &mut Timer<'_>, out: &mut impl Write) {
+        Timer::bind_interrupt(on_timer);
+        timer.listen();
+        timer.arm(Instant::now().duration_since_epoch().as_micros() + 50_000);
+        let mut seen = 0;
+        for _ in 0..10 {
+            let count = COUNT.load(Ordering::Relaxed);
+            if count != seen {
+                seen = count;
+                let at = AT_US.load(Ordering::Relaxed);
+                let now = Instant::now().duration_since_epoch().as_micros() as u32;
+                let _ = writeln!(
+                    out,
+                    "irq: n={count} isr_at={at}us main_saw={now}us delta={}us",
+                    now.wrapping_sub(at)
+                );
+                timer.clear_interrupt();
+                timer.arm(Instant::now().duration_since_epoch().as_micros() + 100_000);
+            }
+            let spin = Instant::now().duration_since_epoch().as_micros();
+            while Instant::now().duration_since_epoch().as_micros() < spin + 50_000 {}
+        }
+        timer.disarm();
+        let _ = writeln!(out, "irq selftest: total={}", COUNT.load(Ordering::Relaxed));
+    }
+}
+
 #[main]
 fn main() -> ! {
     let peripherals = esp_hal::init(esp_hal::Config::default());
@@ -86,6 +134,9 @@ fn main() -> ! {
     timer.arm(boot_us.saturating_add(50_000));
     timer.disarm();
     let _ = writeln!(serial, "timer: boot_us={boot_us}");
+
+    #[cfg(feature = "irq-selftest")]
+    irq_selftest::run(&mut timer, &mut serial);
 
     // Hardware watchdog: the supervisor's deadline is software, the RWDT is the
     // thing that actually resets a hung chip.

@@ -303,7 +303,9 @@ No product code. Establish what is actually true about the hardware and the tool
       TIMG one-shot from a deadline; the example exercises it at boot (`timer: boot_us=…`).
 - [ ] **Executor:** per-class executor with its own 8 KiB stack, `spawn`/`spawn_periodic`, `yield`.
 - [ ] **CCOUNT/mcycle sampling at 1 kHz** for per-task CPU time (host accounting uses caller stamps).
-- [ ] **ISR→task wake + bounded critical sections** bound to hardware interrupts.
+- [x] **ISR path proven on hardware:** TIMG0 one-shot handler fires and returns; main observes it
+      5–16 µs later (`ESP_FEATURES=irq-selftest`, log in [HARDWARE.md](HARDWARE.md)).
+- [ ] **Bounded critical sections** and full ISR→task wake integration.
 - [ ] **defmt/UART sinks, 2 KiB ring, panic flush, PSRAM/heap placement, panic→RTC→reset.**
 - [x] **Line editing:** `LineEditor` (printable bytes, backspace, Enter, Ctrl-C, overflow rejection) with tests;
       the example runs its console through it.

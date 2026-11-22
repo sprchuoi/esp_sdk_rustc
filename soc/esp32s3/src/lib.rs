@@ -19,6 +19,8 @@ use esp_hal::gpio::{Level, Output as HalOutput, OutputConfig, OutputPin};
 use esp_hal::i2c::master::{Config as I2cConfig, ConfigError as I2cError, I2c as HalI2c};
 use esp_hal::spi::master::{Config as SpiConfig, Spi as HalSpi};
 use esp_hal::time::{Duration as HalDuration, Instant};
+use esp_hal::peripherals::Interrupt;
+use esp_hal::interrupt::{self as irq, InterruptHandler, Priority};
 use esp_hal::timer::OneShotTimer;
 use esp_hal::timer::timg::Timer as TimgTimer;
 use esp_sdk_hal as hal;
@@ -203,6 +205,32 @@ impl<'d> Timer<'d> {
         Self {
             one_shot: OneShotTimer::new(timer),
         }
+    }
+}
+
+/// Clear the TIMG0 T0 interrupt from an ISR.
+pub fn clear_timer_interrupt() {
+    // SAFETY: TIMG0 INT_CLR is fixed MMIO; write 1 to bit 0.
+    unsafe {
+        core::ptr::write_volatile((0x6001_f000 + 0x7c) as *mut u32, 1);
+    }
+}
+
+impl Timer<'_> {
+    /// Bind the TG0_T0 interrupt at priority 2 and enable it.
+    pub fn bind_interrupt(handler: InterruptHandler) {
+        irq::bind_handler(Interrupt::TG0_T0_LEVEL, handler);
+        irq::enable(Interrupt::TG0_T0_LEVEL, Priority::Priority2);
+    }
+
+    /// Enable the one-shot interrupt.
+    pub fn listen(&mut self) {
+        self.one_shot.listen();
+    }
+
+    /// Clear a pending one-shot interrupt.
+    pub fn clear_interrupt(&mut self) {
+        self.one_shot.clear_interrupt();
     }
 }
 
