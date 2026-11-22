@@ -333,8 +333,10 @@ The phase that turns "a firmware" into "an SDK you can port".
 - [x] **SoC seed:** `soc/esp32s3` implements `hal::Serial` (interactive UART console: esp-println TX +
       direct RX FIFO), `hal::Delay` and `hal::GpioPin`; the example uses them, toggles an LED and feeds
       the hardware RWDT through the supervisor loop. `--soc` builds it.
-- [ ] **Bus model:** I2C (timeouts, recovery), SPI (CS, modes, DMA threshold), UART, 1-Wire traits
-      and S3 implementations.
+- [x] **Bus HAL on S3:** `hal::I2cBus` and `hal::SpiBus` implemented in `soc/esp32s3`; the example
+      scans I2C0 at boot. Timeout/recovery policy and DMA thresholds are still Phase 3 work.
+- [x] **RWDT proof:** `--rwdt` stops the feed and asserts `RTCWDT_RTC_RESET` in esp32sim.
+- [ ] **Bus model:** I2C timeouts/recovery, SPI CS/modes/DMA threshold, UART RX interrupt, 1-Wire.
 - [x] **Simulation seed:** `examples/hello-kernel` builds for `xtensa-esp32s3-none-elf`, boots in
       esp32sim (mask ROM + IDF bootloader + our app), and `esp_sdk.sh --sim` asserts scheduler,
       IPC and diagnostics output.

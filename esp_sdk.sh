@@ -43,6 +43,7 @@ Device (Xtensa toolchain):
   --bootloader  build the B0 bootloader and target/sim/bootloader-b0.bin
   --sim         boot the example in esp32sim (asserts)
   --console     drive the interactive console with scripted UART input
+  --rwdt        stop the watchdog feed and assert a chip reset
   --sim-b0      boot the B0 bootloader in esp32sim (asserts)
   --all         --check --soc --build --bootloader --sim --console --sim-b0
 
@@ -173,7 +174,7 @@ run_sim() { # args passed to esp32sim
   ensure_sim_binary
   ensure_rom
   "$SIM/target/release/esp32sim" --chip s3 --boot rom --rom "$ROM" \
-    --console uart0 --max-seconds "${SIM_SECONDS:-6}" --flash-mb 8 "$@" | tee "$TMP_LOG"
+    --console uart0 --max-seconds "${SIM_SECONDS:-6}" --flash-mb 8 "$@" 2>&1 | tee "$TMP_LOG"
 }
 
 cmd_sim() {
@@ -205,6 +206,20 @@ cmd_console() {
   echo "CONSOLE OK: UART0 input, line echo and command dispatch"
 }
 
+cmd_rwdt() {
+  [ -f "$OUT/app.bin" ] || cmd_build
+  local script
+  script="$(mktemp)"
+  printf '0.3 uart0 rwdt-starve\n' > "$script"
+  log "RWDT starvation: expecting a reset ~5 s after the feed stops"
+  run_sim --bootloader "$OUT/bootloader.bin" --ptable "$OUT/partition-table.bin" \
+    --app "$OUT/app.bin" --psram-mb 8 --script "$script" --max-seconds 8
+  rm -f "$script"
+  grep -q "expect reset in ~5 s" "$TMP_LOG" || die "starvation command did not run"
+  grep -q "chip reset" "$TMP_LOG" || die "no chip reset observed"
+  echo "RWDT OK: hardware watchdog reset the chip when the feed stopped"
+}
+
 cmd_sim_b0() {
   [ -f "$OUT/bootloader-b0.bin" ] || cmd_bootloader
   log "booting B0 bootloader in esp32sim"
@@ -231,6 +246,7 @@ for arg in "$@"; do
     --bootloader) cmd_bootloader ;;
     --sim)        cmd_sim ;;
     --console)    cmd_console ;;
+    --rwdt)       cmd_rwdt ;;
     --sim-b0)     cmd_sim_b0 ;;
     --all)        cmd_fmt; cmd_lint; cmd_test; cmd_docs; cmd_soc; cmd_build; cmd_bootloader; cmd_sim; cmd_console; cmd_sim_b0 ;;
     --help|-h)    usage; exit 0 ;;

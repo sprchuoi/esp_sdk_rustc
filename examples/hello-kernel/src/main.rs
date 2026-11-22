@@ -16,7 +16,7 @@ use esp_hal::main;
 use esp_hal::time::Instant;
 use esp_hal::rtc_cntl::{Rtc, RwdtStage};
 use esp_hal::time::Duration as HalDuration;
-use esp_sdk_esp32s3::{Output, Serial};
+use esp_sdk_esp32s3::{I2c, Output, Serial};
 use esp_sdk_hal::GpioPin;
 use esp_sdk_kernel::console::{Command, Console, ConsoleIo};
 use esp_sdk_kernel::ipc::MessageQueue;
@@ -42,6 +42,15 @@ fn cmd_sched(_args: &[&str], out: &mut dyn ConsoleIo) {
     let _ = writeln!(out, "classes=ctrl,app,net tasks=3");
 }
 
+/// Stop feeding the hardware watchdog. The loop never returns, so the RWDT
+/// (5 s stage 0) must reset the chip. Used by the starvation test.
+fn cmd_starve(_args: &[&str], out: &mut dyn ConsoleIo) {
+    let _ = writeln!(out, "RWDT: starvation test, feed stopped; expect reset in ~5 s");
+    loop {
+        core::hint::spin_loop();
+    }
+}
+
 #[main]
 fn main() -> ! {
     let peripherals = esp_hal::init(esp_hal::Config::default());
@@ -50,6 +59,19 @@ fn main() -> ! {
 
     // Hardware watchdog: the supervisor's deadline is software, the RWDT is the
     // thing that actually resets a hung chip.
+    // I2C bus scan through the SDK HAL. On a bare devkit nothing answers; the
+    // point is that the bus is driven by our trait, not by esp-hal directly.
+    if let Ok(mut i2c) = I2c::new(peripherals.I2C0, peripherals.GPIO8, peripherals.GPIO9) {
+        let mut found = 0u8;
+        for address in 0x08..=0x77 {
+            if i2c.probe(address) {
+                let _ = writeln!(serial, "i2c: device at 0x{address:02x}");
+                found += 1;
+            }
+        }
+        let _ = writeln!(serial, "i2c scan: {found} device(s)");
+    }
+
     let mut rtc = Rtc::new(peripherals.RTC_TIMER);
     rtc.rwdt
         .set_timeout(RwdtStage::Stage0, HalDuration::from_millis(5_000));
@@ -64,12 +86,15 @@ fn main() -> ! {
 
     // The console framework running over the SDK HAL: UART0 is a `fmt::Write`
     // sink, commands are static, no allocation.
-    let mut console = Console::<2>::new();
+    let mut console = Console::<3>::new();
     console
         .register(Command::new("version", "print firmware version", cmd_version))
         .unwrap();
     console
         .register(Command::new("sched", "show scheduler summary", cmd_sched))
+        .unwrap();
+    console
+        .register(Command::new("rwdt-starve", "stop the RWDT feed (expect reset)", cmd_starve))
         .unwrap();
     let _ = console.execute("help", &mut serial);
 

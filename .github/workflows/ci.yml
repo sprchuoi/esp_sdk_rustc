@@ -158,7 +158,7 @@ jobs:
           default: true
           override: true
       - uses: Swatinem/rust-cache@v2
-      - run: ./esp_sdk.sh --sim --console --sim-b0
+      - run: ./esp_sdk.sh --sim --console --rwdt --sim-b0
 
   # Hardware-in-the-loop. Enabled by setting the repository variable
   # HIL_RUNNER to a self-hosted runner label (Phase 3+, needs a board).

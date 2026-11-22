@@ -13,8 +13,11 @@
 
 use core::fmt;
 
-use esp_hal::gpio::OutputPin;
-use esp_hal::gpio::{Level, Output as HalOutput, OutputConfig};
+use esp_hal::Blocking;
+use esp_hal::gpio::interconnect::{PeripheralInput, PeripheralOutput};
+use esp_hal::gpio::{Level, Output as HalOutput, OutputConfig, OutputPin};
+use esp_hal::i2c::master::{Config as I2cConfig, ConfigError as I2cError, I2c as HalI2c};
+use esp_hal::spi::master::{Config as SpiConfig, Spi as HalSpi};
 use esp_sdk_hal as hal;
 
 /// UART0 register block on the ESP32-S3.
@@ -104,6 +107,81 @@ impl<'d> Output<'d> {
         Self {
             pin: HalOutput::new(pin, level, OutputConfig::default()),
         }
+    }
+}
+
+/// An I2C master implementing the SDK [`hal::I2cBus`] trait.
+pub struct I2c<'d> {
+    inner: HalI2c<'d, Blocking>,
+}
+
+impl<'d> I2c<'d> {
+    /// Create an I2C master with the default 100 kHz configuration.
+    ///
+    /// # Errors
+    /// [`I2cError`] when the bus configuration is not supported.
+    pub fn new(
+        i2c: impl esp_hal::i2c::master::Instance + 'd,
+        sda: impl PeripheralInput<'d> + PeripheralOutput<'d>,
+        scl: impl PeripheralInput<'d> + PeripheralOutput<'d>,
+    ) -> Result<Self, I2cError> {
+        Ok(Self {
+            inner: HalI2c::new(i2c, I2cConfig::default())?
+                .with_sda(sda)
+                .with_scl(scl),
+        })
+    }
+
+    /// Probe an address with a one-byte read. Returns whether it ACKed.
+    pub fn probe(&mut self, address: u8) -> bool {
+        self.inner.read(address, &mut [0u8]).is_ok()
+    }
+}
+
+impl hal::I2cBus for I2c<'_> {
+    async fn write(&mut self, addr: u8, bytes: &[u8]) -> hal::Result<()> {
+        self.inner
+            .write(addr, bytes)
+            .map_err(|_| hal::Error::Bus)
+    }
+
+    async fn read(&mut self, addr: u8, buf: &mut [u8]) -> hal::Result<()> {
+        self.inner.read(addr, buf).map_err(|_| hal::Error::Bus)
+    }
+}
+
+/// An SPI master implementing the SDK [`hal::SpiBus`] trait.
+pub struct Spi<'d> {
+    inner: HalSpi<'d, Blocking>,
+}
+
+impl<'d> Spi<'d> {
+    /// Create an SPI master with the default configuration.
+    ///
+    /// # Errors
+    /// [`esp_hal::spi::master::ConfigError`] when the configuration is unsupported.
+    pub fn new(
+        spi: impl esp_hal::spi::master::Instance + 'd,
+        sck: impl PeripheralOutput<'d>,
+        mosi: impl PeripheralOutput<'d>,
+        miso: impl PeripheralInput<'d>,
+    ) -> Result<Self, esp_hal::spi::master::ConfigError> {
+        Ok(Self {
+            inner: HalSpi::new(spi, SpiConfig::default())?
+                .with_sck(sck)
+                .with_mosi(mosi)
+                .with_miso(miso),
+        })
+    }
+}
+
+impl hal::SpiBus for Spi<'_> {
+    async fn transfer(&mut self, tx: &[u8], rx: &mut [u8]) -> hal::Result<()> {
+        if tx.len() != rx.len() {
+            return Err(hal::Error::InvalidArgument);
+        }
+        rx.copy_from_slice(tx);
+        self.inner.transfer(rx).map_err(|_| hal::Error::Bus)
     }
 }
 
