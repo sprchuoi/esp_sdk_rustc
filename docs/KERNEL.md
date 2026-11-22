@@ -133,23 +133,39 @@ subsys/   storage · crypto backends · provisioning · ota (Phase 3+)
 `third_party/esp32sim` submodule. It boots the real mask ROM, the real second-stage bootloader and an
 unmodified application image, which is exactly the artifact our `boot/` code reasons about.
 
-Intended flow, once Phase 2 produces images:
+Working flow:
 
 ```bash
 git submodule update --init --depth 1
-cargo xtask image --app blinky --out target/sim        # bootloader.bin, partition-table.bin, app.bin, rom.elf
-./scripts/sim-smoke.sh                                  # builds esp32sim, boots the image, checks output
+(cd third_party/esp32sim && tools/fetch-rom-elfs.sh web/wasm/fw)
+./scripts/build-sim-image.sh hello-kernel     # example ELF -> app image + partition table + bootloader
+./scripts/sim-smoke.sh                        # boots it and asserts the kernel ran
+```
+
+`sim-smoke.sh` checks that the banner appeared, `[ctrl] tick` fired, the diagnostics dump was
+produced and `mqtt.packets` shows IPC traffic. Current output (8 emulated seconds):
+
+```
+ esp-sdk hello-kernel on ESP32-S3
+[ctrl] tick t=0 ms
+[net ] publish sensor=0 t=0 ms
+...
+uptime_ms=5000 boot=1 health=ok
+mem heap cap=65536 used=12288 free=53248 low=53248
+metric mqtt.packets=9
+metric sensor.reads=10
 ```
 
 Honest limits:
 
-- The emulator needs the mask ROM, which is not in the repository; `tools/fetch-demo-assets.sh`
-  downloads it. The script checks for it and skips with a message.
-- **Nothing to boot yet.** `scripts/sim-smoke.sh` exits successfully and says so until a firmware
-  image exists; the CI job is gated behind the `SIMULATION` repository variable so a green pipeline
-  never implies "verified on emulator".
+- The mask ROM is not in the repository; `tools/fetch-rom-elfs.sh` downloads it (Apache-2.0).
+- The bootloader is a committed ESP-IDF v5.5.1 S3 build (`boards/esp32s3-devkitc-1/bootloader.bin`)
+  so the image is reproducible without an IDF install. Phase 0 replaces it with a reproducible
+  rollback-enabled build.
 - The emulator models the S3 well but is not a substitute for the real board: timing, power and RF
   are simulated. It is a fast regression net for the boot path, not the acceptance gate.
+- The CI job stays gated behind the `SIMULATION` variable (it downloads the toolchain and builds the
+  emulator, ~10 min); a green pipeline must not imply emulator coverage that did not run.
 
 ## 8. What the pathway guarantees
 

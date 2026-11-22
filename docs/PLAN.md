@@ -151,6 +151,7 @@ Two documents carry the detail:
 | **Initcalls + subsystems** | `kernel/subsys` | 1 | Linux-style levels, stable order, subsystem classes |
 | **Network service** | `net/` | 4 | link/lease/retry state machine, IPv4 parsing, deadlines |
 | **Driver binding** | `drivers/model` | 2 | `DeviceNode`/`DriverDesc`, compatible matching, pre-order bind, unbound detection |
+| **Example app + emulator** | `examples/hello-kernel`, `scripts/` | 2 | boots in esp32sim: scheduler ticks, IPC traffic, diagnostics dump, asserted by script |
 | **AT24 EEPROM driver** | `drivers/eeprom` | 3 | page-aware writes, `tWR` wait, 1/2-byte addressing, host tests |
 | **Boot contract** | `boot/` | 5 | partition validation, otadata CRC/state/selection, app descriptor |
 | Scheduler (priority classes, tickless timers, accounting) | `kernel/sched` | 1 | run order, deadlines and overruns proven by deterministic host tests + 24 h on target |
@@ -314,6 +315,9 @@ The phase that turns "a firmware" into "an SDK you can port".
       `ProbeError::Deferred` retry, typed device table, `devices` console command.
 - [ ] **Bus model:** I2C (timeouts, recovery), SPI (CS, modes, DMA threshold), UART, 1-Wire traits
       and S3 implementations.
+- [x] **Simulation seed:** `examples/hello-kernel` builds for `xtensa-esp32s3-none-elf`, boots in
+      esp32sim (mask ROM + IDF bootloader + our app), and `scripts/sim-smoke.sh` asserts scheduler,
+      IPC and diagnostics output.
 - [ ] **CI matrix:** defconfigs + `allyesconfig` + `allnoconfig`, per-config size budget, strict
       binding (unbound node fails CI).
 

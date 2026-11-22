@@ -143,8 +143,10 @@ jobs:
         run: cargo xtask ci --matrix all
 
 
-  # Emulator smoke test. Enable by setting the SIMULATION repository variable
-  # once `cargo xtask image` produces target/sim/{bootloader,partition-table,app}.bin.
+  # Emulator smoke test: boots the hello-kernel example on a real mask ROM and
+  # the ESP-IDF bootloader, then asserts the scheduler, IPC and diagnostics run.
+  # Gated by the SIMULATION variable because it downloads the Xtensa toolchain
+  # and builds the emulator (~10 min).
   simulation:
     name: esp32sim boot smoke
     if: ${{ vars.SIMULATION == 'true' }}
@@ -153,8 +155,14 @@ jobs:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: esp-rs/xtensa-toolchain@v1.7.0
+        with:
+          buildtargets: esp32s3
+          default: true
+          override: true
       - uses: Swatinem/rust-cache@v2
+      - name: fetch mask ROMs
+        run: (cd third_party/esp32sim && tools/fetch-rom-elfs.sh web/wasm/fw)
       - run: ./scripts/sim-smoke.sh
 
   # Hardware-in-the-loop. Enabled by setting the repository variable

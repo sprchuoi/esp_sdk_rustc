@@ -14,8 +14,9 @@ from ESP-IDF/C++ onto this SDK.
 time, `Signal`, IPC queues/pipes/semaphores, initcall levels, service manager, SHA-256/HMAC, power
 policy and diagnostics; `drivers/` has the binding model and an AT24 EEPROM driver; `net/` has the
 link/lease network service; `boot/` has partition validation, otadata selection and app-descriptor
-parsing — **143 host tests**, clean `no_std` build for a bare-metal target, and `esp32sim` vendored
-as a submodule for emulator boot tests. The rest is documentation and the
+parsing — **144 host tests**, clean `no_std` build for a bare-metal target. The `hello-kernel`
+example **boots in esp32sim** (real mask ROM + IDF bootloader): the scheduler ticks, IPC carries
+sensor readings and the diagnostics dump prints. `scripts/sim-smoke.sh` asserts that run. The rest is documentation and the
 phase plan:
 [PLAN](docs/PLAN.md) · [ARCHITECTURE](docs/ARCHITECTURE.md) · [CONFIGURATION](docs/CONFIGURATION.md) ·
 [DRIVERS](docs/DRIVERS.md) · [BOOT](docs/BOOT.md) · [CI](docs/CI.md) · [SDK contract](docs/SDK.md) ·
