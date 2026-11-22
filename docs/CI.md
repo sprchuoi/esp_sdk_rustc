@@ -43,11 +43,10 @@ with "verified".
 ## 3. Local equivalents
 
 ```bash
-cargo fmt --all
-cargo clippy --workspace --all-targets --all-features -- -D warnings
-cargo test --workspace --all-targets --all-features
-RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps --all-features
-cargo check --workspace --all-features --target x86_64-unknown-none
+./esp_sdk.sh --check        # fmt + clippy + tests + docs
+./esp_sdk.sh --nostd        # bare-metal target build
+./esp_sdk.sh --build --sim  # device image + emulator assertion
+./esp_sdk.sh --sim-b0       # custom bootloader in the emulator
 cargo +1.95.0 check --workspace --all-targets     # MSRV, once the toolchain is installed
 ```
 
@@ -77,7 +76,7 @@ Cache misses must never fail a job.
 | Contract | host (fixtures from hardware) | `smart_home_idf` MQTT payloads, discovery JSON |
 | Integration | host with mocks | probe order, deferred probe, KV power-cut simulation |
 | On-target | HIL | ISR latency, DMA stress, EEPROM write cycle, sleep current |
-| Emulator | esp32sim | boot chain, scheduler, IPC, diagnostics (`scripts/sim-smoke.sh`) |
+| Emulator | esp32sim | boot chain, scheduler, IPC, diagnostics (`esp_sdk.sh --sim`) |
 | Soak | nightly / pre-release | 72 h AP flap + broker restart, 7-day fault injection |
 
 Coverage is tracked for host-tested crates (target ≥ 80 % on kernel/config/contract); the number is

@@ -16,7 +16,7 @@ policy and diagnostics; `drivers/` has the binding model and an AT24 EEPROM driv
 link/lease network service; `boot/` has partition validation, otadata selection and app-descriptor
 parsing — **144 host tests**, clean `no_std` build for a bare-metal target. The `hello-kernel`
 example **boots in esp32sim** (real mask ROM + IDF bootloader): the scheduler ticks, IPC carries
-sensor readings and the diagnostics dump prints. `scripts/sim-smoke.sh` asserts that run. The rest is documentation and the
+sensor readings and the diagnostics dump prints. `esp_sdk.sh --sim` asserts that run. The rest is documentation and the
 phase plan:
 [PLAN](docs/PLAN.md) · [ARCHITECTURE](docs/ARCHITECTURE.md) · [CONFIGURATION](docs/CONFIGURATION.md) ·
 [DRIVERS](docs/DRIVERS.md) · [BOOT](docs/BOOT.md) · [CI](docs/CI.md) · [SDK contract](docs/SDK.md) ·
@@ -136,11 +136,11 @@ before any cutover. Plan: [docs/MIGRATION.md](docs/MIGRATION.md).
 ## Development
 
 ```bash
-cargo test --workspace --all-features          # 143 host tests (HAL, kernel, drivers, net, boot)
-cargo clippy --workspace --all-targets --all-features -- -D warnings
-cargo fmt --all -- --check
-RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps --all-features
-cargo check --workspace --all-features --target x86_64-unknown-none   # proves no_std
+./esp_sdk.sh --check        # rustfmt + clippy + 144 host tests + rustdoc
+./esp_sdk.sh --nostd        # workspace builds for x86_64-unknown-none
+./esp_sdk.sh --build --sim  # example image, then boot it in esp32sim (asserted)
+./esp_sdk.sh --sim-b0       # custom B0 bootloader in esp32sim (asserted)
+./esp_sdk.sh --help         # everything else
 ```
 
 CI runs exactly these on every push, plus MSRV 1.95; S3/C6 device builds, the config matrix and

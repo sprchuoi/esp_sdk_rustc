@@ -138,8 +138,8 @@ Working flow:
 ```bash
 git submodule update --init --depth 1
 (cd third_party/esp32sim && tools/fetch-rom-elfs.sh web/wasm/fw)
-./scripts/build-sim-image.sh hello-kernel     # example ELF -> app image + partition table + bootloader
-./scripts/sim-smoke.sh                        # boots it and asserts the kernel ran
+./esp_sdk.sh --build     # example ELF -> app image + partition table + bootloader
+./esp_sdk.sh --sim                        # boots it and asserts the kernel ran
 ```
 
 `sim-smoke.sh` checks that the banner appeared, `[ctrl] tick` fired, the diagnostics dump was

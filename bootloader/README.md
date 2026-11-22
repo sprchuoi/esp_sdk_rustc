@@ -10,7 +10,7 @@ ROM contract before we add flash reads, partition tables and MMU mapping.
 ## Build and run
 
 ```bash
-../scripts/bootloader-b0.sh      # builds, makes the ESP image, boots it in esp32sim
+../esp_sdk.sh --sim-b0           # builds, makes the ESP image, boots it in esp32sim
 ```
 
 Expected:

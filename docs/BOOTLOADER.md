@@ -97,7 +97,7 @@ Sprchuoi ESP32 Boot
 [esp-sdk] B0 stage-2, running from IRAM
 ```
 
-`scripts/bootloader-b0.sh` builds it, converts the ELF with `esptool elf2image`, boots esp32sim and
+`esp_sdk.sh --sim-b0` builds it, converts the ELF with `esptool elf2image`, boots esp32sim and
 asserts the load address and the product banner (`Sprchuoi ESP32 Boot`). Three things learned the hard way:
 
 1. Xtensa inline assembly requires `#![feature(asm_experimental_arch)]` on the esp toolchain.

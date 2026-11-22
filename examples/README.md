@@ -21,8 +21,8 @@ git submodule update --init --depth 1    # third_party/esp32sim
 Build the image set and boot it:
 
 ```bash
-./scripts/build-sim-image.sh hello-kernel     # target/sim/{app,partition-table,bootloader}.bin
-./scripts/sim-smoke.sh                        # boots esp32sim and asserts the output
+./esp_sdk.sh --build     # target/sim/{app,partition-table,bootloader}.bin
+./esp_sdk.sh --sim                        # boots esp32sim and asserts the output
 ```
 
 Expected console (abridged; the `ESP-IDF ... 2nd stage bootloader` line comes from the purchased
