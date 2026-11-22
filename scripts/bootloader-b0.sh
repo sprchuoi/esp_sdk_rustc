@@ -15,13 +15,8 @@ mkdir -p "$OUT"
 
 (
   cd "$SRC"
-  EXPORT_FILE="${ESPUP_EXPORT_FILE:-$HOME/export-esp.sh}"
-  if [ -f "$EXPORT_FILE" ]; then
-    set -a
-    # shellcheck disable=SC1090
-    . "$EXPORT_FILE"
-    set +a
-  fi
+  # shellcheck disable=SC1091
+  . "$ROOT/scripts/xtensa-env.sh"
   cargo build --release --target "$TARGET"
 )
 
@@ -48,7 +43,9 @@ trap 'rm -f "$LOG"' EXIT
 
 grep -q "load:0x403c0000" "$LOG" ||
   { echo "FAIL: ROM did not load our IRAM segment" >&2; exit 1; }
-grep -q "\[esp-sdk\] bootloader B0: alive" "$LOG" ||
-  { echo "FAIL: B0 banner not printed" >&2; exit 1; }
+grep -q "Sprchuoi ESP32 Boot" "$LOG" ||
+  { echo "FAIL: product banner not printed" >&2; exit 1; }
+grep -q "running from IRAM" "$LOG" ||
+  { echo "FAIL: B0 stage line not printed" >&2; exit 1; }
 
 echo "B0 OK: mask ROM loaded our image and ran our code from IRAM"

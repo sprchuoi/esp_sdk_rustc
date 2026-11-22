@@ -19,17 +19,10 @@ mkdir -p "$OUT"
 
 if [ ! -f "$ELF" ]; then
   echo "building $EXAMPLE for $TARGET"
-  EXPORT_FILE="${ESPUP_EXPORT_FILE:-$HOME/export-esp.sh}"
   (
     cd "$EXAMPLE_DIR"
-    if [ -f "$EXPORT_FILE" ]; then
-      set -a
-      # shellcheck disable=SC1090
-      . "$EXPORT_FILE"
-      set +a
-    else
-      echo "no export file; assuming the Xtensa toolchain is already in the environment"
-    fi
+    # shellcheck disable=SC1091
+    . "$ROOT/scripts/xtensa-env.sh"
     cargo build --release --target "$TARGET"
   )
 fi

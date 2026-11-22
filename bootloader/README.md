@@ -2,7 +2,7 @@
 
 Stage B0 of the gated bootloader track ([docs/BOOTLOADER.md](../docs/BOOTLOADER.md)). The mask ROM
 loads this image from flash 0x0, copies its segment to IRAM at `0x403c0000`, and jumps to `_start`.
-It prints a banner over UART0 (already configured by the ROM) and halts.
+It prints the product banner (`Sprchuoi ESP32 Boot`) over UART0 — already configured by the ROM — and halts. Change the message in `.Lbanner` inside `src/boot.S`.
 
 This is deliberately assembly-only: no stack use, no windowed-ABI calls, no runtime. It proves the
 ROM contract before we add flash reads, partition tables and MMU mapping.
@@ -19,7 +19,8 @@ Expected:
 load:0x403c0000,len:0x14c
 entry 0x403c0004
 
-[esp-sdk] bootloader B0: alive, running from IRAM
+Sprchuoi ESP32 Boot
+[esp-sdk] B0 stage-2, running from IRAM
 ```
 
 ## Constraints learned here
@@ -31,7 +32,7 @@ entry 0x403c0004
   relocation ("literal placed after use").
 - The ROM leaves a valid stack pointer, but B0 never calls Rust, so window spills cannot happen yet.
   B1 will need a runtime (vectors or hand-written window handlers) once it calls functions.
-- The binary is ~400 bytes; the 32 KiB budget is not a concern yet.
+- The binary is ~100 bytes; the 32 KiB budget is not a concern yet.
 
 ## Next (B1)
 

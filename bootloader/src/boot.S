@@ -1,118 +1,35 @@
-/* B0: print through UART0 and halt. No calls, no stack, no window spills.
- * ROM has already configured UART0 at 115200 for its own boot log. */
+/* B0: print the product banner through UART0 and halt.
+ *
+ * No calls, no stack, no window spills. The banner lives in .rodata and is
+ * walked byte by byte; the only literal is a pointer to it, placed in
+ * .literal before the code (l32r can only reach backwards).
+ *
+ * Change the message in .Lbanner — it is the only thing to edit.
+ */
+
+.section .literal, "a"
+.align 4
+.Lbanner_ptr:
+  .word .Lbanner
+
+.section .rodata, "a"
+.Lbanner:
+  .asciz "\r\nSprchuoi ESP32 Boot\r\n[esp-sdk] B0 stage-2, running from IRAM\r\n"
+
 .section .text._start, "ax"
 .global _start
 .type _start, @function
 .align 4
 _start:
   movi a3, 0x6000
-  slli a3, a3, 16          /* a3 = UART0 base 0x60000000 */
-  movi a4, 13
-  s32i a4, a3, 0
-  movi a4, 10
-  s32i a4, a3, 0
-  movi a4, 91
-  s32i a4, a3, 0
-  movi a4, 101
-  s32i a4, a3, 0
-  movi a4, 115
-  s32i a4, a3, 0
-  movi a4, 112
-  s32i a4, a3, 0
-  movi a4, 45
-  s32i a4, a3, 0
-  movi a4, 115
-  s32i a4, a3, 0
-  movi a4, 100
-  s32i a4, a3, 0
-  movi a4, 107
-  s32i a4, a3, 0
-  movi a4, 93
-  s32i a4, a3, 0
-  movi a4, 32
-  s32i a4, a3, 0
-  movi a4, 98
-  s32i a4, a3, 0
-  movi a4, 111
-  s32i a4, a3, 0
-  movi a4, 111
-  s32i a4, a3, 0
-  movi a4, 116
-  s32i a4, a3, 0
-  movi a4, 108
-  s32i a4, a3, 0
-  movi a4, 111
-  s32i a4, a3, 0
-  movi a4, 97
-  s32i a4, a3, 0
-  movi a4, 100
-  s32i a4, a3, 0
-  movi a4, 101
-  s32i a4, a3, 0
-  movi a4, 114
-  s32i a4, a3, 0
-  movi a4, 32
-  s32i a4, a3, 0
-  movi a4, 66
-  s32i a4, a3, 0
-  movi a4, 48
-  s32i a4, a3, 0
-  movi a4, 58
-  s32i a4, a3, 0
-  movi a4, 32
-  s32i a4, a3, 0
-  movi a4, 97
-  s32i a4, a3, 0
-  movi a4, 108
-  s32i a4, a3, 0
-  movi a4, 105
-  s32i a4, a3, 0
-  movi a4, 118
-  s32i a4, a3, 0
-  movi a4, 101
-  s32i a4, a3, 0
-  movi a4, 44
-  s32i a4, a3, 0
-  movi a4, 32
-  s32i a4, a3, 0
-  movi a4, 114
-  s32i a4, a3, 0
-  movi a4, 117
-  s32i a4, a3, 0
-  movi a4, 110
-  s32i a4, a3, 0
-  movi a4, 110
-  s32i a4, a3, 0
-  movi a4, 105
-  s32i a4, a3, 0
-  movi a4, 110
-  s32i a4, a3, 0
-  movi a4, 103
-  s32i a4, a3, 0
-  movi a4, 32
-  s32i a4, a3, 0
-  movi a4, 102
-  s32i a4, a3, 0
-  movi a4, 114
-  s32i a4, a3, 0
-  movi a4, 111
-  s32i a4, a3, 0
-  movi a4, 109
-  s32i a4, a3, 0
-  movi a4, 32
-  s32i a4, a3, 0
-  movi a4, 73
-  s32i a4, a3, 0
-  movi a4, 82
-  s32i a4, a3, 0
-  movi a4, 65
-  s32i a4, a3, 0
-  movi a4, 77
-  s32i a4, a3, 0
-  movi a4, 13
-  s32i a4, a3, 0
-  movi a4, 10
-  s32i a4, a3, 0
+  slli a3, a3, 16            /* a3 = UART0 base 0x60000000 */
+  l32r a5, .Lbanner_ptr      /* a5 = &banner */
 1:
-  j 1b                     /* B0 halts here; the emulator stops on --max-seconds */
+  l8ui a4, a5, 0
+  beqz a4, 2f
+  s32i a4, a3, 0             /* push the byte into the UART FIFO */
+  addi a5, a5, 1
+  j 1b
+2:
+  j 2b                       /* B0 halts; the emulator stops on --max-seconds */
 .size _start, . - _start

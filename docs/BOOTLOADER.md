@@ -87,17 +87,18 @@ B0–B2 prove the hard parts. B3–B5 are features on top and can land increment
 
 ### B0 result (landed)
 
-`bootloader/` is a 400-byte ESP image at 0x0. The ROM log shows:
+`bootloader/` is a 100-byte ESP image at 0x0. The ROM log shows:
 
 ```
-load:0x403c0000,len:0x14c
-entry 0x403c0004
+load:0x403c0000,len:0x64
+entry 0x403c0008
 
-[esp-sdk] bootloader B0: alive, running from IRAM
+Sprchuoi ESP32 Boot
+[esp-sdk] B0 stage-2, running from IRAM
 ```
 
 `scripts/bootloader-b0.sh` builds it, converts the ELF with `esptool elf2image`, boots esp32sim and
-asserts both the load address and the banner. Three things learned the hard way:
+asserts the load address and the product banner (`Sprchuoi ESP32 Boot`). Three things learned the hard way:
 
 1. Xtensa inline assembly requires `#![feature(asm_experimental_arch)]` on the esp toolchain.
 2. `l32r` literals must be emitted **before** the referencing code; otherwise the linker fails with
