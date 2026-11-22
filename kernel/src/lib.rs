@@ -25,14 +25,17 @@
 //! core and the power policy.
 
 pub mod config;
+pub mod console;
 pub mod crypto;
 pub mod ipc;
+pub mod irq;
 pub mod log;
 pub mod metrics;
 pub mod power;
 pub mod sched;
 pub mod service;
 pub mod subsys;
+pub mod supervisor;
 pub mod sync;
 pub mod time;
 

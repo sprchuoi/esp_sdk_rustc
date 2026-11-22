@@ -1,6 +1,6 @@
 # Architecture
 
-**Status:** draft v0.9 · 2026-09-21
+**Status:** draft v0.11 · 2026-09-21
 Companion to [PLAN.md](PLAN.md). This document is the design the phases implement.
 
 ---
@@ -171,6 +171,10 @@ The scheduler is real, and it is priority-based; it is **not** preemptive (ADR-0
 
 ### 3.2 Interrupts
 
+*Implemented seed:* `kernel/irq.rs` — a static `IrqTable` where a driver claims an IRQ with a
+priority (1–7), duplicates are rejected, and dispatch counts feed diagnostics. The SoC still owns the
+vector hardware; this is the booking layer, host-tested with fake handlers.
+
 - Static vector table; each IRQ is claimed once at boot by a driver (`IrqHandler` registration).
   Priorities are a fixed map (radio, timer, GPIO, buses) — no runtime priority juggling.
 - **ISR contract:** ≤ 10 µs, no logging, no allocation, no blocking, no flash writes. The only
@@ -326,6 +330,9 @@ Two profiles, chosen by the app, both using the same kernel hooks:
 
 ### 3.11 Supervisor
 
+*Implemented seed:* `kernel/supervisor.rs` — heartbeat registration and deadlines (one report per
+miss until re-armed), watchdog feed/re-arm, and a boot-attempt counter that enters safe mode.
+
 - RWDT fed by the `Ctrl` executor only, 10 s. A task that hogs the executor trips it.
 - Heartbeat registry: each task declares a max period; the monitor flags a hung service and resets
   cleanly before the watchdog fires dirty.
@@ -374,7 +381,14 @@ components register a name and level, and the boot path asks for the order. `Sub
 class (core/net/storage/input/crypto/diagnostics). The full boot pathway is in
 [KERNEL.md](KERNEL.md).
 
-### 3.16 Network service
+### 3.16 Console
+
+`kernel/console.rs` is the command framework: a static `Console<N>` table, a no-allocation
+whitespace parser (`MAX_ARGS`), a built-in `help`, and output through `core::fmt::Write` so the same
+commands run over UART, USB-Serial-JTAG or a `String` in tests. The transport and line editing are
+the SoC/example's job.
+
+### 3.17 Network service
 
 `net/` owns the service view of connectivity: `Down → RequestingLease → Ready{address, expiry} →
 Degraded{retry_at}`, with `tick()`/`next_deadline()` driving lease expiry and retries and
@@ -532,7 +546,7 @@ of the offending symbols. Target: ≤ 450 KiB binary for the sensor node without
 ## 8. Testing hooks built into the design
 
 - **Host arch** (`chip-host`): deterministic clock, scripted I2C/SPI/serial/GPIO/flash mocks
-  (`hal::mock`), in-memory KV — 36 host tests today, run in milliseconds.
+  (`hal::mock`), in-memory KV — 163 host tests today, run in milliseconds.
 - **Scheduler tests:** deterministic single-threaded harness that pumps the executor and asserts run
   order, deadlines, overrun events and the starvation guard.
 - **Interrupt latency test:** GPIO toggle at ISR entry/exit, measured on a scope; recorded per release.

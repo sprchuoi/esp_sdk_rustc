@@ -1,6 +1,6 @@
 # esp_sdk_rustc — Build Plan
 
-**Status:** draft v0.10 · 2026-09-21
+**Status:** draft v0.11 · 2026-09-21
 **Goal:** a Rust **SDK** for ESP32 smart-home nodes that ships an OS — a tiny RTOS with the scheduler,
 drivers, network and device framework — portable across chips and boards the way a Linux kernel is:
 configuration-driven, hardware described in data, drivers bound by compatible string. Customers
@@ -151,6 +151,9 @@ Two documents carry the detail:
 | **IPC** | `kernel/ipc` | 1 | message queue, mailbox, pipe, semaphore with backpressure/high-water |
 | **Initcalls + subsystems** | `kernel/subsys` | 1 | Linux-style levels, stable order, subsystem classes |
 | **Network service** | `net/` | 4 | link/lease/retry state machine, IPv4 parsing, deadlines |
+| **Interrupt table** | `kernel/irq` | 1 | claim-by-IRQ, priorities, dispatch counting, duplicate detection |
+| **Console framework** | `kernel/console` | 1 | command registry, parser, help, argument limits, `fmt::Write` sink |
+| **Supervisor** | `kernel/supervisor` | 1 | heartbeats (report-once), watchdog feed/rearm, boot attempts → safe mode |
 | **Driver binding** | `drivers/model` | 2 | `DeviceNode`/`DriverDesc`, compatible matching, pre-order bind, unbound detection |
 | **Example app + emulator** | `examples/hello-kernel`, `esp_sdk.sh` | 2 | boots in esp32sim: scheduler ticks, IPC traffic, diagnostics dump, asserted by script |
 | **AT24 EEPROM driver** | `drivers/eeprom` | 3 | page-aware writes, `tWR` wait, 1/2-byte addressing, host tests |
@@ -279,6 +282,13 @@ No product code. Establish what is actually true about the hardware and the tool
       blocking waits (they need the executor's waker + arch critical section).
 - [x] **Initcalls and subsystems:** Linux-style levels (`early`…`late`), stable ordering,
       subsystem class registry ([KERNEL.md](KERNEL.md)).
+- [x] **Interrupt table:** claim by IRQ with priority range checks, duplicate rejection, dispatch
+      counting for diagnostics (`kernel/irq.rs`).
+- [x] **Console:** static command table, whitespace parser, built-in `help`, argument limit, output
+      through `fmt::Write` (`kernel/console.rs`).
+- [x] **Supervisor:** heartbeat deadlines reported once per miss, watchdog feed/rearm, boot-attempt
+      counter that enters safe mode (`kernel/supervisor.rs`).
+- [x] **Scheduler suspend/resume:** suspended tasks swallow wakes and timers; `resume` re-arms.
 - [ ] **Scheduler integration:** per-class executor with its own stack (8 KiB), `spawn`/
       `spawn_periodic`, `yield`, `suspend`/`resume`, starvation aging, `sched` stats.
 - [ ] **Timers:** static deadline heap (32 entries), tickless arm/disarm, period-overrun detection.

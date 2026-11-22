@@ -269,6 +269,7 @@ pub struct Scheduler {
     ready: [ReadyQueue; Class::COUNT],
     timers: TimerHeap,
     classes: [Option<Class>; MAX_TASKS],
+    suspended: [bool; MAX_TASKS],
     generations: [u32; MAX_TASKS],
     now_us: u64,
 }
@@ -287,6 +288,7 @@ impl Scheduler {
             ready: [ReadyQueue::new(); Class::COUNT],
             timers: TimerHeap::new(),
             classes: [None; MAX_TASKS],
+            suspended: [false; MAX_TASKS],
             generations: [0; MAX_TASKS],
             now_us: 0,
         }
@@ -327,12 +329,44 @@ impl Scheduler {
     ///
     /// Waking an already-ready task is a no-op at the queue level; the
     /// generation bump cancels a stale timer that would otherwise fire later.
+    /// A suspended task swallows the wake: it becomes ready only on
+    /// [`Scheduler::resume`].
     pub fn wake(&mut self, task: TaskId) -> Result<(), SchedError> {
         let Some(class) = self.class_of(task) else {
             return Err(SchedError::InvalidTask);
         };
         self.generations[task.index()] = self.generations[task.index()].wrapping_add(1);
+        if self.suspended[task.index()] {
+            return Ok(());
+        }
         self.ready[class.index()].push(task)
+    }
+
+    /// Suspend a task: remove it from the ready set and ignore wakes until
+    /// [`Scheduler::resume`].
+    pub fn suspend(&mut self, task: TaskId) -> Result<(), SchedError> {
+        let Some(class) = self.class_of(task) else {
+            return Err(SchedError::InvalidTask);
+        };
+        self.suspended[task.index()] = true;
+        self.ready[class.index()].remove(task);
+        Ok(())
+    }
+
+    /// Resume a suspended task, making it ready.
+    pub fn resume(&mut self, task: TaskId) -> Result<(), SchedError> {
+        let Some(class) = self.class_of(task) else {
+            return Err(SchedError::InvalidTask);
+        };
+        self.suspended[task.index()] = false;
+        self.generations[task.index()] = self.generations[task.index()].wrapping_add(1);
+        self.ready[class.index()].push(task)
+    }
+
+    /// Whether a task is suspended.
+    #[must_use]
+    pub fn is_suspended(&self, task: TaskId) -> bool {
+        task.index() < MAX_TASKS && self.suspended[task.index()]
     }
 
     /// Arm a deadline for a sleeping task.
@@ -382,6 +416,7 @@ impl Scheduler {
             let index = timer.task.index();
             if index < MAX_TASKS
                 && timer.generation == self.generations[index]
+                && !self.suspended[index]
                 && self.wake(timer.task).is_ok()
             {
                 woken += 1;
@@ -534,6 +569,36 @@ mod tests {
         assert_eq!(scheduler.now_us(), 500);
         assert_eq!(scheduler.advance_to(100), 0);
         assert_eq!(scheduler.now_us(), 500);
+    }
+
+    #[test]
+    fn suspend_blocks_wake_until_resume() {
+        let mut scheduler = Scheduler::new();
+        scheduler.register(task(1), Class::App).unwrap();
+
+        scheduler.wake(task(1)).unwrap();
+        scheduler.suspend(task(1)).unwrap();
+        assert!(scheduler.is_suspended(task(1)));
+        assert!(!scheduler.is_ready(task(1)));
+
+        assert!(scheduler.wake(task(1)).is_ok());
+        assert!(!scheduler.is_ready(task(1)));
+        assert_eq!(scheduler.next_ready(), None);
+
+        scheduler.resume(task(1)).unwrap();
+        assert!(!scheduler.is_suspended(task(1)));
+        assert_eq!(scheduler.next_ready(), Some(task(1)));
+    }
+
+    #[test]
+    fn suspended_timer_does_not_wake() {
+        let mut scheduler = Scheduler::new();
+        scheduler.register(task(1), Class::App).unwrap();
+        scheduler.suspend(task(1)).unwrap();
+        scheduler.sleep_until(task(1), 100).unwrap();
+
+        assert_eq!(scheduler.advance_to(100), 0);
+        assert_eq!(scheduler.next_ready(), None);
     }
 
     #[test]

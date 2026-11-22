@@ -11,10 +11,10 @@ first real consumer is the migration of [`smart_home_idf`](https://github.com/sp
 from ESP-IDF/C++ onto this SDK.
 
 **Status: Phase 2 seed.** `hal/` has the trait set plus host mocks; `kernel/` has the scheduler,
-time, `Signal`, IPC queues/pipes/semaphores, initcall levels, service manager, SHA-256/HMAC, power
-policy and diagnostics; `drivers/` has the binding model and an AT24 EEPROM driver; `net/` has the
+time, `Signal`, IPC queues/pipes/semaphores, initcall levels, interrupt table, console, supervisor,
+service manager, SHA-256/HMAC, power policy and diagnostics; `drivers/` has the binding model and an AT24 EEPROM driver; `net/` has the
 link/lease network service; `boot/` has partition validation, otadata selection and app-descriptor
-parsing — **144 host tests**, clean `no_std` build for a bare-metal target. The `hello-kernel`
+parsing — **163 host tests**, clean `no_std` build for a bare-metal target. The `hello-kernel`
 example **boots in esp32sim** (real mask ROM + IDF bootloader): the scheduler ticks, IPC carries
 sensor readings and the diagnostics dump prints. `esp_sdk.sh --sim` asserts that run. The rest is documentation and the
 phase plan:
@@ -136,7 +136,7 @@ before any cutover. Plan: [docs/MIGRATION.md](docs/MIGRATION.md).
 ## Development
 
 ```bash
-./esp_sdk.sh --check        # rustfmt + clippy + 144 host tests + rustdoc
+./esp_sdk.sh --check        # rustfmt + clippy + 163 host tests + rustdoc
 ./esp_sdk.sh --nostd        # workspace builds for x86_64-unknown-none
 ./esp_sdk.sh --build --sim  # example image, then boot it in esp32sim (asserted)
 ./esp_sdk.sh --sim-b0       # custom B0 bootloader in esp32sim (asserted)
