@@ -16,8 +16,8 @@ ROM contract before we add flash reads, partition tables and MMU mapping.
 Expected:
 
 ```
-load:0x403c0000,len:0x14c
-entry 0x403c0004
+load:0x403c0000,len:0x64
+entry 0x403c0008
 
 Sprchuoi ESP32 Boot
 [esp-sdk] B0 stage-2, running from IRAM
