@@ -56,6 +56,101 @@ pub enum ConsoleError {
     TooManyArgs,
 }
 
+/// Result of feeding one byte to a [`LineEditor`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LineEvent {
+    /// Byte stored or ignored; keep reading.
+    Pending,
+    /// Enter: the line is ready in [`LineEditor::line`].
+    Submitted,
+    /// Ctrl-C: the line was discarded.
+    Cancelled,
+    /// The line is full; the byte was not stored.
+    Rejected,
+}
+
+/// A small line editor: printable bytes, backspace, enter and Ctrl-C.
+///
+/// It owns no I/O; the caller echoes the bytes it wants and runs the line on
+/// [`LineEvent::Submitted`]. That keeps it testable and lets the same editor sit
+/// over UART, USB-Serial-JTAG or a mock.
+pub struct LineEditor<const N: usize> {
+    buffer: [u8; N],
+    len: usize,
+}
+
+impl<const N: usize> Default for LineEditor<N> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<const N: usize> LineEditor<N> {
+    /// Create an empty editor.
+    #[must_use]
+    pub const fn new() -> Self {
+        Self {
+            buffer: [0; N],
+            len: 0,
+        }
+    }
+
+    /// Current line length.
+    #[must_use]
+    pub const fn len(&self) -> usize {
+        self.len
+    }
+
+    /// Whether the line is empty.
+    #[must_use]
+    pub const fn is_empty(&self) -> bool {
+        self.len == 0
+    }
+
+    /// The line as text, if it is valid UTF-8 (ASCII in practice).
+    #[must_use]
+    pub fn line(&self) -> Option<&str> {
+        core::str::from_utf8(&self.buffer[..self.len]).ok()
+    }
+
+    /// Copy the line into `out`, returning its length.
+    pub fn copy_line(&self, out: &mut [u8]) -> usize {
+        let count = out.len().min(self.len);
+        out[..count].copy_from_slice(&self.buffer[..count]);
+        count
+    }
+
+    /// Clear the line.
+    pub fn clear(&mut self) {
+        self.len = 0;
+    }
+
+    /// Feed one received byte.
+    pub fn feed(&mut self, byte: u8) -> LineEvent {
+        match byte {
+            b'\r' | b'\n' => LineEvent::Submitted,
+            0x03 => {
+                self.len = 0;
+                LineEvent::Cancelled
+            }
+            0x08 | 0x7f => {
+                self.len = self.len.saturating_sub(1);
+                LineEvent::Pending
+            }
+            0x20..=0x7e => {
+                if self.len < N {
+                    self.buffer[self.len] = byte;
+                    self.len += 1;
+                    LineEvent::Pending
+                } else {
+                    LineEvent::Rejected
+                }
+            }
+            _ => LineEvent::Pending,
+        }
+    }
+}
+
 /// Static command table.
 #[derive(Clone)]
 pub struct Console<const N: usize> {
@@ -259,6 +354,40 @@ mod tests {
         assert!(out.contains("echo"));
         assert!(out.contains("print arguments"));
         assert!(out.contains("sched"));
+    }
+
+    #[test]
+    fn line_editor_accepts_printables_and_submits() {
+        let mut editor = LineEditor::<16>::new();
+        for byte in b"help" {
+            assert_eq!(editor.feed(*byte), LineEvent::Pending);
+        }
+        assert_eq!(editor.line(), Some("help"));
+        assert_eq!(editor.feed(b'\n'), LineEvent::Submitted);
+        assert_eq!(editor.line(), Some("help"));
+        editor.clear();
+        assert!(editor.is_empty());
+    }
+
+    #[test]
+    fn line_editor_backspace_and_cancel() {
+        let mut editor = LineEditor::<8>::new();
+        for byte in b"abc" {
+            editor.feed(*byte);
+        }
+        editor.feed(0x7f);
+        assert_eq!(editor.line(), Some("ab"));
+        assert_eq!(editor.feed(0x03), LineEvent::Cancelled);
+        assert!(editor.is_empty());
+    }
+
+    #[test]
+    fn line_editor_rejects_overflow() {
+        let mut editor = LineEditor::<2>::new();
+        assert_eq!(editor.feed(b'a'), LineEvent::Pending);
+        assert_eq!(editor.feed(b'b'), LineEvent::Pending);
+        assert_eq!(editor.feed(b'c'), LineEvent::Rejected);
+        assert_eq!(editor.line(), Some("ab"));
     }
 
     #[test]

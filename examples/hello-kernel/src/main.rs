@@ -19,7 +19,7 @@ use esp_hal::timer::timg::TimerGroup;
 use esp_hal::time::Duration as HalDuration;
 use esp_sdk_esp32s3::{I2c, Output, Serial, Timer};
 use esp_sdk_hal::{GpioPin, Timer as _};
-use esp_sdk_kernel::console::{Command, Console, ConsoleIo};
+use esp_sdk_kernel::console::{Command, Console, ConsoleIo, LineEditor, LineEvent};
 use esp_sdk_kernel::ipc::MessageQueue;
 use esp_sdk_kernel::metrics::{Diagnostics, Health};
 use esp_sdk_kernel::sched::{Class, Scheduler, TaskId};
@@ -111,8 +111,7 @@ fn main() -> ! {
     let mut supervisor = Supervisor::<4>::new(5_000_000, 3);
     supervisor.register(CTRL.raw(), 500_000, 0).unwrap();
 
-    let mut line = [0u8; 64];
-    let mut line_len = 0usize;
+    let mut editor = LineEditor::<64>::new();
 
     let start = Instant::now();
 
@@ -141,27 +140,31 @@ fn main() -> ! {
         supervisor.feed(now);
         rtc.rwdt.feed();
 
-        // Interactive console over the SDK HAL: read what the UART has, echo it,
-        // and dispatch a line on Enter. No allocation.
+        // Interactive console over the SDK HAL: the kernel's LineEditor handles
+        // printable bytes, backspace and Ctrl-C; we only echo and dispatch.
         while let Some(byte) = serial.read_byte() {
-            match byte {
-                b'\r' | b'\n' => {
-                    let _ = writeln!(serial);
-                    if line_len > 0 {
-                        if let Ok(text) = core::str::from_utf8(&line[..line_len]) {
-                            let _ = console.execute(text, &mut serial);
-                        }
-                        line_len = 0;
-                    }
-                }
-                0x20..=0x7e => {
-                    if line_len < line.len() {
-                        line[line_len] = byte;
-                        line_len += 1;
+            match editor.feed(byte) {
+                LineEvent::Pending => {
+                    if byte == 0x08 || byte == 0x7f {
+                        let _ = write!(serial, "\u{8} \u{8}");
+                    } else if (0x20..=0x7e).contains(&byte) {
                         let _ = write!(serial, "{}", byte as char);
                     }
                 }
-                _ => {}
+                LineEvent::Submitted => {
+                    let _ = writeln!(serial);
+                    let mut buffer = [0u8; 64];
+                    let length = editor.copy_line(&mut buffer);
+                    if let Ok(text) = core::str::from_utf8(&buffer[..length]) {
+                        let _ = console.execute(text, &mut serial);
+                    }
+                    editor.clear();
+                }
+                LineEvent::Cancelled => {
+                    let _ = writeln!(serial, "^C");
+                    editor.clear();
+                }
+                LineEvent::Rejected => {}
             }
         }
 

@@ -305,7 +305,10 @@ No product code. Establish what is actually true about the hardware and the tool
 - [ ] **CCOUNT/mcycle sampling at 1 kHz** for per-task CPU time (host accounting uses caller stamps).
 - [ ] **ISR→task wake + bounded critical sections** bound to hardware interrupts.
 - [ ] **defmt/UART sinks, 2 KiB ring, panic flush, PSRAM/heap placement, panic→RTC→reset.**
-- [ ] **Console line editing and the full command set** (status/tasks/mem/log/reset/selftest).
+- [x] **Line editing:** `LineEditor` (printable bytes, backspace, Enter, Ctrl-C, overflow rejection) with tests;
+      the example runs its console through it.
+- [x] **Panic-dump helper:** `log::Ring::flush` renders retained records for a crash dump.
+- [ ] **Full command set on target** (status/tasks/mem/log/reset/selftest).
 - [ ] **Scheduler integration:** per-class executor with its own stack (8 KiB), `spawn`/
       `spawn_periodic`, `yield`, `suspend`/`resume`, starvation aging, `sched` stats.
 - [ ] **Timers:** static deadline heap (32 entries), tickless arm/disarm, period-overrun detection.

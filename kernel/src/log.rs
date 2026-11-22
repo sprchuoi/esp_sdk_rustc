@@ -178,6 +178,21 @@ impl<const N: usize> Ring<N> {
         (0..self.len).filter_map(|index| self.get(index))
     }
 
+    /// Write the retained records oldest-first, for a panic dump.
+    ///
+    /// # Errors
+    /// Propagates writer errors.
+    pub fn flush<W: fmt::Write>(&self, out: &mut W) -> fmt::Result {
+        for record in self.iter() {
+            writeln!(
+                out,
+                "[{}] t={}us code={} arg={}",
+                record.level, record.uptime_us, record.code, record.arg
+            )?;
+        }
+        Ok(())
+    }
+
     /// Drop all records.
     pub fn clear(&mut self) {
         self.write = 0;
@@ -270,6 +285,18 @@ mod tests {
         ring.clear();
         assert!(ring.is_empty());
         assert_eq!(ring.iter().count(), 0);
+    }
+
+    #[test]
+    fn flush_renders_retained_records() {
+        let mut ring = Ring::<4>::new();
+        ring.push(record(1, Level::Warn));
+        ring.push(record(2, Level::Error));
+        let mut out = std::string::String::new();
+        ring.flush(&mut out).unwrap();
+        assert!(out.contains("[WARN]"));
+        assert!(out.contains("[ERROR]"));
+        assert!(out.contains("code=2"));
     }
 
     #[test]

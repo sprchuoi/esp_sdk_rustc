@@ -394,7 +394,8 @@ class (core/net/storage/input/crypto/diagnostics). The full boot pathway is in
 
 ### 3.16 Console
 
-`kernel/console.rs` is the command framework, exercised interactively in esp32sim over UART0
+`kernel/console.rs` is the command framework plus a `LineEditor` (printable bytes, backspace,
+Enter, Ctrl-C, overflow rejection), exercised interactively in esp32sim over UART0
 (`./esp_sdk.sh --console`): a static `Console<N>` table, a no-allocation
 whitespace parser (`MAX_ARGS`), a built-in `help`, and output through `core::fmt::Write` so the same
 commands run over UART, USB-Serial-JTAG or a `String` in tests. The transport and line editing are
@@ -561,7 +562,7 @@ of the offending symbols. Target: ≤ 450 KiB binary for the sensor node without
 ## 8. Testing hooks built into the design
 
 - **Host arch** (`chip-host`): deterministic clock, scripted I2C/SPI/serial/GPIO/flash mocks
-  (`hal::mock`), in-memory KV — 187 host tests today, run in milliseconds.
+  (`hal::mock`), in-memory KV — 191 host tests today, run in milliseconds.
 - **Scheduler tests:** deterministic single-threaded harness that pumps the executor and asserts run
   order, deadlines, overrun events and the starvation guard.
 - **Interrupt latency test:** GPIO toggle at ISR entry/exit, measured on a scope; recorded per release.
