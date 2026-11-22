@@ -208,7 +208,7 @@ cmd_console() {
   ESP_FEATURES="" cmd_build
   local script
   script="$(mktemp)"
-  printf '0.3 uart0 help\n0.8 uart0 version\n1.2 uart0 status\n1.6 uart0 selftest\n' > "$script"
+  printf '0.3 uart0 help\n0.8 uart0 version\n1.2 uart0 status\n1.6 uart0 selftest\n2.0 uart0 tasks\n2.3 uart0 log\n' > "$script"
   log "driving the console over UART0"
   run_sim --bootloader "$OUT/bootloader.bin" --ptable "$OUT/partition-table.bin" \
     --app "$OUT/app.bin" --psram-mb 8 --script "$script"
@@ -217,6 +217,8 @@ cmd_console() {
   grep -q "hello-kernel 0.1.0" "$TMP_LOG" || die "console command did not run"
   grep -q "uptime_ms=" "$TMP_LOG" || die "status command did not run"
   grep -q "selftest: i2c_devices=" "$TMP_LOG" || die "selftest command did not run"
+  grep -q "id  class  wakes runs run_ms" "$TMP_LOG" || die "tasks command did not run"
+  grep -q "log:" "$TMP_LOG" || die "log command did not run"
   echo "CONSOLE OK: UART0 input, line echo and command dispatch"
 }
 
@@ -383,6 +385,18 @@ cmd_hw() {
 # --- dispatch -------------------------------------------------------------
 [ $# -gt 0 ] || { usage; exit 2; }
 
+# --send is a modifier for --monitor; collect it before executing anything so
+# its position on the command line does not matter.
+SEND_TEXT=""
+ARGS=()
+for arg in "$@"; do
+  case "$arg" in
+    --send=*) SEND_TEXT="${arg#--send=}" ;;
+    *) ARGS+=("$arg") ;;
+  esac
+done
+set -- "${ARGS[@]}"
+
 for arg in "$@"; do
   case "$arg" in
     --fmt)        cmd_fmt ;;
@@ -402,7 +416,6 @@ for arg in "$@"; do
     --flash-erase) cmd_flash_erase ;;
     --monitor)    cmd_monitor ;;
     --monitor=*)  cmd_monitor "${arg#--monitor=}" ;;
-    --send=*)     SEND_TEXT="${arg#--send=}" ;;
     --terminal)   cmd_terminal ;;
     --hw)         cmd_hw ;;
     --all)        cmd_fmt; cmd_lint; cmd_test; cmd_docs; cmd_soc; cmd_build; cmd_bootloader; cmd_sim; cmd_console; cmd_sim_b0 ;;

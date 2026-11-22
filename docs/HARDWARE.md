@@ -94,12 +94,10 @@ later. This delta is an upper bound: the main loop polls, and `Instant` is read
 in the handler, so it does not include vector entry. The simulator's exception
 storm with the same handler is therefore a simulator issue, not a firmware one.
 
-## Known issue (measured on hardware)
+## UART RX (fixed)
 
-TX works: the banner, console help, timer line, I2C scan and scheduler output all
-appear. RX does not: `--send` produces no echo with either backend — the raw
-UART0 FIFO read and the `hardware-uart` feature using `esp_hal::uart::Uart`.
-Flashing over the same CH343 proves host→board data reaches the chip, so the
-next checks are the UART0 pin mux / RX pin (GPIO44), `CONF0`/`CONF1`, and whether
-the CH343's RX net is actually wired to U0RXD on this board. The command set is
-verified in esp32sim meanwhile (`./esp_sdk.sh --console`).
+Typed commands now reach the firmware over UART0:
+`--send=$'tasks\nlog\n'` returns the table and event ring on hardware, and
+`./esp_sdk.sh --terminal` is interactive. Two fixes were needed: CRLF output
+(`\n` → `\r\n`) for clean terminal rendering, and waiting for minicom/screen to
+release the tty before flashing.

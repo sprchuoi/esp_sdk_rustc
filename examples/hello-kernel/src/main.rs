@@ -31,6 +31,27 @@ esp_bootloader_esp_idf::esp_app_desc!();
 static I2C_FOUND: AtomicU8 = AtomicU8::new(0);
 static BOOT_US: AtomicU32 = AtomicU32::new(0);
 
+static TASK_WAKES: [AtomicU32; 3] = [const { AtomicU32::new(0) }; 3];
+static TASK_RUNS: [AtomicU32; 3] = [const { AtomicU32::new(0) }; 3];
+static TASK_RUN_MS: [AtomicU32; 3] = [const { AtomicU32::new(0) }; 3];
+static LOG_SEQ: AtomicU32 = AtomicU32::new(0);
+static LOG_ENTRIES: [AtomicU32; 8] = [const { AtomicU32::new(0) }; 8];
+
+fn log_event(code: u32, arg: u32) {
+    let slot = LOG_SEQ.fetch_add(1, Ordering::Relaxed) as usize % LOG_ENTRIES.len();
+    LOG_ENTRIES[slot].store((code << 16) | (arg & 0xffff), Ordering::Relaxed);
+}
+
+fn snapshot_tasks(scheduler: &Scheduler) {
+    for (index, task) in [CTRL, SENSOR, NET].iter().enumerate() {
+        if let Some(stats) = scheduler.stats(*task) {
+            TASK_WAKES[index].store(stats.wakes, Ordering::Relaxed);
+            TASK_RUNS[index].store(stats.runs, Ordering::Relaxed);
+            TASK_RUN_MS[index].store((stats.run_us / 1_000) as u32, Ordering::Relaxed);
+        }
+    }
+}
+
 const CTRL: TaskId = TaskId::new(0);
 const SENSOR: TaskId = TaskId::new(1);
 const NET: TaskId = TaskId::new(2);
@@ -62,6 +83,37 @@ fn cmd_mem(_args: &[&str], out: &mut dyn ConsoleIo) {
         "mem allocator=none kernel=static i2c_devices={}",
         I2C_FOUND.load(Ordering::Relaxed)
     );
+}
+
+fn cmd_tasks(_args: &[&str], out: &mut dyn ConsoleIo) {
+    let _ = writeln!(out, "id  class  wakes runs run_ms");
+    for (index, name) in ["ctrl", "app", "net"].iter().enumerate() {
+        let _ = writeln!(
+            out,
+            "{name:4} {name:5} {:5} {:4} {:6}",
+            TASK_WAKES[index].load(Ordering::Relaxed),
+            TASK_RUNS[index].load(Ordering::Relaxed),
+            TASK_RUN_MS[index].load(Ordering::Relaxed)
+        );
+    }
+}
+
+fn cmd_log(_args: &[&str], out: &mut dyn ConsoleIo) {
+    let seq = LOG_SEQ.load(Ordering::Relaxed) as usize;
+    let start = seq.saturating_sub(LOG_ENTRIES.len());
+    let _ = writeln!(out, "log: {} event(s)", seq);
+    for index in start..seq {
+        let encoded = LOG_ENTRIES[index % LOG_ENTRIES.len()].load(Ordering::Relaxed);
+        let code = encoded >> 16;
+        let name = match code {
+            1 => "ctrl-tick",
+            2 => "net-publish",
+            3 => "dump",
+            4 => "boot",
+            _ => "event",
+        };
+        let _ = writeln!(out, "  {name} arg={}", encoded & 0xffff);
+    }
 }
 
 fn cmd_selftest(_args: &[&str], out: &mut dyn ConsoleIo) {
@@ -184,7 +236,7 @@ fn main() -> ! {
 
     // The console framework running over the SDK HAL: UART0 is a `fmt::Write`
     // sink, commands are static, no allocation.
-    let mut console = Console::<7>::new();
+    let mut console = Console::<9>::new();
     console
         .register(Command::new("version", "print firmware version", cmd_version))
         .unwrap();
@@ -206,6 +258,14 @@ fn main() -> ! {
     console
         .register(Command::new("reset", "software reset", cmd_reset))
         .unwrap();
+    console
+        .register(Command::new("tasks", "task counters snapshot", cmd_tasks))
+        .unwrap();
+    console
+        .register(Command::new("log", "recent kernel events", cmd_log))
+        .unwrap();
+
+    log_event(4, 0);
     let _ = console.execute("help", &mut serial);
 
     let mut supervisor = Supervisor::<4>::new(5_000_000, 3);
@@ -268,12 +328,15 @@ fn main() -> ! {
             }
         }
 
+        snapshot_tasks(&scheduler);
+
         while let Some(task) = scheduler.next_ready() {
             match task {
                 CTRL => {
                     let _ = writeln!(serial, "[ctrl] tick t={} ms", now / 1000);
                     supervisor.beat(CTRL.raw(), now);
                     led.set(!led.get());
+                    log_event(1, (now / 1_000) as u32);
                     scheduler.sleep_for(CTRL, 250_000).unwrap();
                 }
                 SENSOR => {
@@ -294,6 +357,7 @@ fn main() -> ! {
                             now / 1000
                         );
                         diagnostics.metrics.incr(packets);
+                        log_event(2, reading);
                     }
                     scheduler.sleep_for(NET, 1_000_000).unwrap();
                 }
@@ -313,6 +377,7 @@ fn main() -> ! {
             let mut dump = DumpLine::default();
             diagnostics.dump(&mut dump).unwrap();
             let _ = writeln!(serial, "{}", dump.as_str());
+            log_event(3, (now / 1_000) as u32);
 
             if diagnostics.health() == Health::Critical {
                 diagnostics.faults.record(0x0202, now, 0);

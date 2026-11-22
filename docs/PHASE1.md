@@ -7,8 +7,8 @@ Updated after the first real-hardware run (ESP32-S3 rev0.2, 16 MB flash, 8 MB PS
 | Item | State | Evidence | Remaining |
 |---|---|---|---|
 | **Console line editing** | done | `LineEditor`, 4 host tests, sim `--console` | — |
-| **Console commands** | partial | `help`, `version`, `sched`, `status`, `mem`, `selftest`, `reset`, `rwdt-starve` registered; verified in sim `--console` | `tasks` and live `sched`/`log` need the shared monitor; no hardware RX |
-| **UART RX** | **broken on hardware** | esp-println raw FIFO *and* `esp_hal::uart::Uart` (GPIO44 RX) both receive nothing; TX and flashing over the same CH343 work | loopback GPIO43→GPIO44, verify U0RXD mux in the GPIO matrix, inspect `CONF0/CONF1`; commands are verified in sim meanwhile |
+| **Console commands** | **done** | `help/version/status/tasks/sched/mem/log/reset/selftest/rwdt-starve`; `tasks`/`log` use runtime snapshots; verified in sim and on hardware | `sched` is still a static class summary, not the full table |
+| **UART RX** | **done** | `--send=$'tasks\nlog\n'` returns table/log on hardware; CRLF rendering fixed; `--terminal` available | — |
 | **Scheduler integration** | partial | classes, round-robin, suspend/resume, aging, stats all host-tested | executor (8 KiB per class), `spawn`/`spawn_periodic`, `yield` |
 | **Timers** | mostly done | deadline heap (32), tickless `hal::Timer` + TIMG one-shot, overrun accounting | hardware periodic wake integration (executor) |
 | **Accounting** | partial | `begin_run`/`end_run`, wakes, max, overruns, `write_stats` | CCOUNT/1 kHz sampler; max latency; target rendering |
@@ -25,8 +25,8 @@ Updated after the first real-hardware run (ESP32-S3 rev0.2, 16 MB flash, 8 MB PS
 - TIMG0 ISR (`irq-selftest`) fires and returns on hardware; ISR→main observation
   was 5–16 µs over five interrupts, no faults. The esp32sim exception storm is
   emulator-specific.
-- `status/mem/reset/selftest` are registered and verified in esp32sim; no
-  hardware RX means they cannot be invoked on the board yet.
+- `status/mem/reset/selftest/tasks/log` are registered and verified in esp32sim
+  and on the board (`--send=$'tasks\nlog\n'` returns real tables).
 - `--flash`, `--monitor`, `--send`, `--hw` and `target/serial.log` are the
   hardware workflow.
 
@@ -52,8 +52,8 @@ Updated after the first real-hardware run (ESP32-S3 rev0.2, 16 MB flash, 8 MB PS
    "CH343 RX net not wired".
 2. If loopback passes, fix the external RX path/board wiring claim; if it fails,
    program `CONF0/CONF1` explicitly and re-test with a scope on GPIO44.
-3. In parallel (sim-verifiable): add `Monitor` + `tasks`/`log`/live `sched`
-   commands, using the same `critical-section` backend the ISR/Mutex work needs.
+3. Replace the static `sched` command with a full live table (per-task class,
+   wakes, runs, run_ms, overruns) from the same snapshot used by `tasks`.
 
 ## Acceptance per step
 
