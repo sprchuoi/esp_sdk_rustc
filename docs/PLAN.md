@@ -299,6 +299,13 @@ No product code. Establish what is actually true about the hardware and the tool
 - [x] **Event bus:** lossy drop-oldest and reliable all-or-nothing publishing, per-subscriber queues.
 - [x] **Boot manager:** decoded crash record + three-strike safe mode (`kernel/boot.rs`).
 - [x] **Latency method:** targets, procedure and results table in [latency.md](latency.md).
+- [x] **Tickless hardware arm/disarm:** `hal::Timer` (now/arm/disarm) + mock; `soc/esp32s3` arms a
+      TIMG one-shot from a deadline; the example exercises it at boot (`timer: boot_us=…`).
+- [ ] **Executor:** per-class executor with its own 8 KiB stack, `spawn`/`spawn_periodic`, `yield`.
+- [ ] **CCOUNT/mcycle sampling at 1 kHz** for per-task CPU time (host accounting uses caller stamps).
+- [ ] **ISR→task wake + bounded critical sections** bound to hardware interrupts.
+- [ ] **defmt/UART sinks, 2 KiB ring, panic flush, PSRAM/heap placement, panic→RTC→reset.**
+- [ ] **Console line editing and the full command set** (status/tasks/mem/log/reset/selftest).
 - [ ] **Scheduler integration:** per-class executor with its own stack (8 KiB), `spawn`/
       `spawn_periodic`, `yield`, `suspend`/`resume`, starvation aging, `sched` stats.
 - [ ] **Timers:** static deadline heap (32 entries), tickless arm/disarm, period-overrun detection.

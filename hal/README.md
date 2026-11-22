@@ -11,6 +11,7 @@ layout.
 | `i2c.rs` | `I2cBus` | `mock/i2c.rs` |
 | `spi.rs` | `SpiBus` | `mock/spi.rs` |
 | `serial.rs` | `Serial` | `mock/serial.rs` |
+| `timer.rs` | `Timer` | `mock/timer.rs` |
 | `flash.rs` | `Flash` | `mock/flash.rs` |
 | `net.rs` | `NetDevice`, `MacAddr`, `LinkState`, `NetStats` | — (state machine in `net/`) |
 | `rng.rs` | `Rng` | — |

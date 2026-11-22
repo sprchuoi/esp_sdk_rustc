@@ -25,7 +25,7 @@ What runs on every push, what runs on hardware, and what a green build actually 
 |---|---|---|
 | `fmt` | every PR | `cargo fmt --all -- --check` |
 | `lint` | every PR | `cargo clippy --workspace --all-targets -- -D warnings` |
-| `test` | every PR | `./esp_sdk.sh --test` (185 tests: HAL mocks, kernel, drivers, net, boot), then `cargo doc` with `RUSTDOCFLAGS=-D warnings` |
+| `test` | every PR | `./esp_sdk.sh --test` (187 tests: HAL mocks, kernel, drivers, net, boot), then `cargo doc` with `RUSTDOCFLAGS=-D warnings` |
 | `msrv` | every PR | workspace compiles on Rust 1.95 (the `esp-hal` MSRV) |
 | `nostd` | every PR | workspace builds for `x86_64-unknown-none`, proving no accidental `std` dependency |
 | `device-esp32s3` | when `soc/esp32s3/` exists | builds the SoC crate (and the example through `--all`) for `xtensa-esp32s3-none-elf` |
@@ -114,7 +114,7 @@ The release workflow is added with Phase 6; until then releases are manual and f
 The repository has the Phase 2 seed: `hal/` (traits + host mocks), `kernel/` (scheduler, time,
 `Signal`, IPC, initcalls, service manager, crypto primitives, power policy, diagnostics), `drivers/`
 (binding model + AT24 EEPROM), `net/` (link/lease service) and `boot/` (partitions, otadata,
-selection, descriptor) with 185 host tests. `third_party/esp32sim` is vendored for emulator boot
+selection, descriptor) with 187 host tests. `third_party/esp32sim` is vendored for emulator boot
 tests; the job stays dormant until a firmware image exists. The CI runs fmt, clippy, tests+docs, MSRV and a bare-metal
 `no_std` build; device, config-matrix and HIL jobs are present and dormant by design, so the pipeline
 does not have to be rewritten when each phase lands.

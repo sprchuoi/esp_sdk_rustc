@@ -18,6 +18,9 @@ use esp_hal::gpio::interconnect::{PeripheralInput, PeripheralOutput};
 use esp_hal::gpio::{Level, Output as HalOutput, OutputConfig, OutputPin};
 use esp_hal::i2c::master::{Config as I2cConfig, ConfigError as I2cError, I2c as HalI2c};
 use esp_hal::spi::master::{Config as SpiConfig, Spi as HalSpi};
+use esp_hal::time::{Duration as HalDuration, Instant};
+use esp_hal::timer::OneShotTimer;
+use esp_hal::timer::timg::Timer as TimgTimer;
 use esp_sdk_hal as hal;
 
 /// UART0 register block on the ESP32-S3.
@@ -182,6 +185,39 @@ impl hal::SpiBus for Spi<'_> {
         }
         rx.copy_from_slice(tx);
         self.inner.transfer(rx).map_err(|_| hal::Error::Bus)
+    }
+}
+
+/// A monotonic clock with a one-shot alarm, implementing [`hal::Timer`].
+///
+/// `now_us` is boot-relative (`Instant::duration_since_epoch`); `arm` schedules
+/// the TIMG one-shot for the remaining delta, which is the tickless primitive
+/// the scheduler needs.
+pub struct Timer<'d> {
+    one_shot: OneShotTimer<'d, Blocking>,
+}
+
+impl<'d> Timer<'d> {
+    /// Wrap a TIMG timer channel.
+    pub fn new(timer: TimgTimer<'d>) -> Self {
+        Self {
+            one_shot: OneShotTimer::new(timer),
+        }
+    }
+}
+
+impl hal::Timer for Timer<'_> {
+    fn now_us(&self) -> u64 {
+        Instant::now().duration_since_epoch().as_micros() as u64
+    }
+
+    fn arm(&mut self, deadline_us: u64) {
+        let delta = deadline_us.saturating_sub(self.now_us());
+        let _ = self.one_shot.schedule(HalDuration::from_micros(delta));
+    }
+
+    fn disarm(&mut self) {
+        self.one_shot.stop();
     }
 }
 

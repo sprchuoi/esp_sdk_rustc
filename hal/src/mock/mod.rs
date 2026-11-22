@@ -13,6 +13,7 @@ mod gpio;
 mod i2c;
 mod serial;
 mod spi;
+mod timer;
 
 pub use delay::MockDelay;
 pub use flash::MockFlash;
@@ -20,6 +21,7 @@ pub use gpio::MockGpio;
 pub use i2c::MockI2c;
 pub use serial::MockSerial;
 pub use spi::MockSpi;
+pub use timer::MockTimer;
 
 /// Poll a future to completion using a no-op waker.
 ///

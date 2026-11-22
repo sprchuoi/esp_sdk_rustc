@@ -37,6 +37,7 @@ pub mod net;
 pub mod rng;
 pub mod serial;
 pub mod spi;
+pub mod timer;
 
 pub use delay::Delay;
 pub use error::{Error, Result};
@@ -47,6 +48,7 @@ pub use net::{LinkState, MacAddr, NetDevice, NetStats};
 pub use rng::Rng;
 pub use serial::Serial;
 pub use spi::SpiBus;
+pub use timer::Timer;
 
 #[cfg(any(test, feature = "mock"))]
 pub mod mock;

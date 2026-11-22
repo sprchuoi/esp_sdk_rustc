@@ -14,7 +14,7 @@ from ESP-IDF/C++ onto this SDK.
 time, `Signal`, IPC queues/pipes/semaphores, initcall levels, interrupt table, console, supervisor,
 service manager, SHA-256/HMAC, power policy and diagnostics; `drivers/` has the binding model and an AT24 EEPROM driver; `net/` has the
 link/lease network service; `boot/` has partition validation, otadata selection and app-descriptor
-parsing — **185 host tests**, clean `no_std` build for a bare-metal target. The `hello-kernel`
+parsing — **187 host tests**, clean `no_std` build for a bare-metal target. The `hello-kernel`
 example **boots in esp32sim** (real mask ROM + IDF bootloader): the scheduler ticks, IPC carries
 sensor readings and the diagnostics dump prints. `esp_sdk.sh --sim` asserts that run. The rest is documentation and the
 phase plan:
@@ -136,7 +136,7 @@ before any cutover. Plan: [docs/MIGRATION.md](docs/MIGRATION.md).
 ## Development
 
 ```bash
-./esp_sdk.sh --check        # rustfmt + clippy + 185 host tests + rustdoc
+./esp_sdk.sh --check        # rustfmt + clippy + 187 host tests + rustdoc
 ./esp_sdk.sh --nostd        # workspace builds for x86_64-unknown-none
 ./esp_sdk.sh --soc          # build the ESP32-S3 platform layer (Serial, Delay, GPIO)
 ./esp_sdk.sh --console      # drive the interactive UART console in esp32sim

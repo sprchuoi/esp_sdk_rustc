@@ -143,8 +143,9 @@ The scheduler is real, and it is priority-based; it is **not** preemptive (ADR-0
 - **Classes:** `Ctrl` (control loops, button), `App` (state machines, sensors), `Net` (MQTT, WiFi
   housekeeping), plus `Idle`. One executor per class → a busy low-priority task cannot delay a
   high-priority wake. Within a class: round-robin, FIFO ready bitmask, O(1) pick.
-- **Tickless.** No periodic tick. The next deadline arms the timer comparator; no work means no
-  wakeup. This is a precondition for light sleep.
+- **Tickless (hardware primitive implemented).** No periodic tick. `Scheduler::next_deadline()` feeds
+  [`hal::Timer::arm`](https://docs.rs/esp-sdk-hal), implemented on the S3 by a TIMG one-shot; `disarm`
+  stops it. The executor integration still has to drive it from the idle loop.
 - **Timers:** static heap of 32 `TimerEntry { deadline, task_id, generation }`; `sleep_until`,
   `sleep`, `spawn_periodic`. A period overrun (task not run before its next deadline) fires
   `Event::Fault(Overrun { task })` and is counted per task.
@@ -560,7 +561,7 @@ of the offending symbols. Target: ≤ 450 KiB binary for the sensor node without
 ## 8. Testing hooks built into the design
 
 - **Host arch** (`chip-host`): deterministic clock, scripted I2C/SPI/serial/GPIO/flash mocks
-  (`hal::mock`), in-memory KV — 185 host tests today, run in milliseconds.
+  (`hal::mock`), in-memory KV — 187 host tests today, run in milliseconds.
 - **Scheduler tests:** deterministic single-threaded harness that pumps the executor and asserts run
   order, deadlines, overrun events and the starvation guard.
 - **Interrupt latency test:** GPIO toggle at ISR entry/exit, measured on a scope; recorded per release.

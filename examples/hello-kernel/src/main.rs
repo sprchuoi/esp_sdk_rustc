@@ -15,9 +15,10 @@ use esp_backtrace as _;
 use esp_hal::main;
 use esp_hal::time::Instant;
 use esp_hal::rtc_cntl::{Rtc, RwdtStage};
+use esp_hal::timer::timg::TimerGroup;
 use esp_hal::time::Duration as HalDuration;
-use esp_sdk_esp32s3::{I2c, Output, Serial};
-use esp_sdk_hal::GpioPin;
+use esp_sdk_esp32s3::{I2c, Output, Serial, Timer};
+use esp_sdk_hal::{GpioPin, Timer as _};
 use esp_sdk_kernel::console::{Command, Console, ConsoleIo};
 use esp_sdk_kernel::ipc::MessageQueue;
 use esp_sdk_kernel::metrics::{Diagnostics, Health};
@@ -71,6 +72,15 @@ fn main() -> ! {
         }
         let _ = writeln!(serial, "i2c scan: {found} device(s)");
     }
+
+    // Tickless alarm primitive: arm a 50 ms one-shot through the HAL, then
+    // disarm it. The super-loop does not need it yet, the executor will.
+    let timg0 = TimerGroup::new(peripherals.TIMG0);
+    let mut timer = Timer::new(timg0.timer0);
+    let boot_us = timer.now_us();
+    timer.arm(boot_us.saturating_add(50_000));
+    timer.disarm();
+    let _ = writeln!(serial, "timer: boot_us={boot_us}");
 
     let mut rtc = Rtc::new(peripherals.RTC_TIMER);
     rtc.rwdt
