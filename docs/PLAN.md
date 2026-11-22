@@ -1,6 +1,6 @@
 # esp_sdk_rustc — Build Plan
 
-**Status:** draft v0.12 · 2026-09-21
+**Status:** draft v0.13 · 2026-11-22
 **Goal:** a Rust **SDK** for ESP32 smart-home nodes that ships an OS — a tiny RTOS with the scheduler,
 drivers, network and device framework — portable across chips and boards the way a Linux kernel is:
 configuration-driven, hardware described in data, drivers bound by compatible string. Customers
