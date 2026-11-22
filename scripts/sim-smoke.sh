@@ -44,6 +44,8 @@ trap 'rm -f "$LOG"' EXIT
   --max-seconds "$SECONDS_TO_RUN" \
   --flash-mb 8 --psram-mb 8 | tee "$LOG"
 
+grep -q "Sprchuoi ESP32 Boot" "$LOG" ||
+  { echo "FAIL: product banner not printed by the app" >&2; exit 1; }
 grep -q "esp-sdk hello-kernel on ESP32-S3" "$LOG" ||
   { echo "FAIL: kernel banner not reached" >&2; exit 1; }
 grep -q "\[ctrl\] tick" "$LOG" ||

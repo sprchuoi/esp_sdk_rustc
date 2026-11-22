@@ -31,6 +31,7 @@ bootloader, not from the app — see [docs/BOOT.md](../docs/BOOT.md#11-why-the-c
 ```
 I (7) boot: ESP-IDF v5.5.1 2nd stage bootloader
 I (10) boot: Loaded app from partition at offset 0x10000
+Sprchuoi ESP32 Boot
  esp-sdk hello-kernel on ESP32-S3
 [ctrl] tick t=0 ms
 [net ] publish sensor=0 t=0 ms

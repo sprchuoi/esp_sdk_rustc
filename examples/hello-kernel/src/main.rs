@@ -32,6 +32,7 @@ fn main() -> ! {
     let _peripherals = esp_hal::init(esp_hal::Config::default());
 
     println!();
+    println!("Sprchuoi ESP32 Boot");
     println!("==============================================");
     println!(" esp-sdk hello-kernel on ESP32-S3");
     println!(" kernel: scheduler + IPC + diagnostics demo");
